@@ -53,7 +53,10 @@ services:
     region: oregon
     buildCommand: >-
       npm install -g pnpm@9.15.9 &&
+      echo "--- which pnpm ---" && which -a pnpm &&
+      echo "--- pnpm --version ---" && pnpm --version &&
       pnpm install --frozen-lockfile &&
+      echo "--- prisma bin check ---" && ls -la apps/api/node_modules/.bin/ | grep -i prisma || echo "NO PRISMA BIN FOUND" &&
       pnpm --filter @crm/shared build &&
       pnpm --filter api exec prisma generate &&
       pnpm --filter api build
