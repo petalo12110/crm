@@ -52,6 +52,7 @@ services:
     plan: free
     region: oregon
     buildCommand: >-
+      npm install -g pnpm@9.15.9 &&
       pnpm install --frozen-lockfile &&
       pnpm --filter @crm/shared build &&
       pnpm --filter api exec prisma generate &&
