@@ -2,8 +2,14 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-# Build-script approval (prisma, esbuild, sharp, etc.) lives in the root
-# package.json's "pnpm.onlyBuiltDependencies" field — that's what
-# pnpm@9.15.9 (pinned via render.yaml's buildCommand) actually reads.
-# allowBuilds (this file's modern equivalent) doesn't exist until pnpm
-# v10.26+, so it's deliberately not used here while we're pinned to 9.x.
+# Testing this location combined with the confirmed pnpm@9.15.9 pin in
+# render.yaml — package.json's "pnpm.onlyBuiltDependencies" has shown the
+# "no longer read" deprecation warning even under 9.15.9, so this may be
+# the version where the setting actually needs to live here instead.
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - prisma
+  - esbuild
+  - msgpackr-extract
+  - sharp
