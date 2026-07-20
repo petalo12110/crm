@@ -1,0 +1,16 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# onlyBuiltDependencies was REMOVED in pnpm v11, replaced by allowBuilds
+# (see https://pnpm.io/settings#allowbuilds). Render's pnpm build image is
+# on v11, which was silently ignoring the old key entirely — that's why
+# the prisma CLI's setup script never ran and `prisma` came back as
+# "Command not found". allowBuilds is the key that actually works now.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true

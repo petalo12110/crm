@@ -1,0 +1,18 @@
+-- Customer self-service portal: magic-link auth tokens
+CREATE TABLE IF NOT EXISTS "customer_portal_tokens" (
+    "id"          TEXT NOT NULL,
+    "customer_id" TEXT NOT NULL,
+    "token_hash"  TEXT NOT NULL,
+    "expires_at"  TIMESTAMP(3) NOT NULL,
+    "used_at"     TIMESTAMP(3),
+    "created_at"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "customer_portal_tokens_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "customer_portal_tokens_token_hash_key" ON "customer_portal_tokens"("token_hash");
+CREATE INDEX IF NOT EXISTS "customer_portal_tokens_customer_id_idx" ON "customer_portal_tokens"("customer_id");
+
+ALTER TABLE "customer_portal_tokens"
+  ADD CONSTRAINT "customer_portal_tokens_customer_id_fkey"
+  FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;

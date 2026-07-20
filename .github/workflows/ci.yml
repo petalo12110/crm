@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Type-check, lint, and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     crm_test
+          POSTGRES_PASSWORD: crm_test
+          POSTGRES_DB:       crm_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @crm/shared build
+
+      - name: Type check — API
+        run: pnpm --filter api exec tsc --noEmit
+
+      - name: Unit tests
+        env:
+          DATABASE_URL:   postgresql://crm_test:crm_test@localhost:5432/crm_test
+          REDIS_URL:      redis://localhost:6379/1
+          JWT_SECRET:     ci-test-secret-minimum-32-characters-long
+          ENCRYPTION_KEY: ${{ '0'.repeat(64) }}
+        run: pnpm --filter api exec vitest run --reporter=verbose
+
+      - name: Build — API
+        run: pnpm --filter api exec tsc
+
+  deploy:
+    name: Deploy to production
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and push Docker image
+        run: |
+          echo "Add docker build and push steps here"
+          echo "Replace with your registry: docker build, docker push"
+
+      - name: Deploy
+        run: |
+          echo "Add deployment steps here"
+          echo "e.g. SSH into server and docker compose pull && docker compose up -d"

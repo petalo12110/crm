@@ -1,0 +1,113 @@
+# Render Blueprint — deploys the API as a single Web Service. Postgres
+# and Redis are NOT defined here — they're external (Neon and Upstash
+# respectively). Push this file to your repo root, then in Render:
+# New > Blueprint > connect this repo.
+#
+# After the first deploy, you'll need to manually set (in the service's
+# dashboard, under Environment) the variables marked `sync: false` below —
+# Render intentionally never auto-fills secrets from the YAML.
+#
+# ── Why there's only one service ──────────────────────────
+# This was originally two services — crm-api (Web Service) and
+# crm-worker (Background Worker) — which is the cleaner split and is
+# what you want once you're not on a free plan. But Render's free tier
+# doesn't include the Background Worker service type at all (Blueprint
+# sync fails with "service type is not available for this plan"), so
+# there's no way to run a second free process for it.
+#
+# Fix: the email/notification job processors now run embedded inside
+# the API process itself (see apps/api/src/delivery/server.ts calling
+# startWorkers() directly, and infrastructure/queue/startWorkers.ts for
+# the shared logic). One process doing both HTTP handling and job
+# processing isn't as clean architecturally, but it's what actually
+# works within the free-tier constraint.
+#
+# If you move to a paid Render plan later: uncomment the crm-worker
+# service block at the bottom of this file, and remove the
+# startWorkers() call from server.ts so jobs aren't processed twice
+# (once by each process) — nothing else needs to change, the job
+# processing logic itself is already shared between both paths.
+
+envVarGroups:
+  - name: crm-secrets
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      # NOT generateValue: Render's generator produces a base64-encoded
+      # 256-bit value (~44 chars, with +/= characters) — but the app
+      # requires exactly 64 hex characters (32 raw bytes) for AES-256-GCM
+      # (see apps/api/src/config/env.ts and core/utils/index.ts). A
+      # generated value would fail env validation on every boot and the
+      # service would never come up. Generate it yourself and paste it in
+      # the dashboard after first deploy:
+      #   openssl rand -hex 32
+      - key: ENCRYPTION_KEY
+        sync: false
+
+services:
+  # ── API server (handles HTTP + background jobs) ──────────
+  - type: web
+    name: crm-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @crm/shared build &&
+      pnpm --filter api exec prisma generate &&
+      pnpm --filter api build
+    # Migrations run once per deploy, right before the new instance takes
+    # over — safe to run every time, prisma migrate deploy only applies
+    # whatever hasn't been applied yet.
+    startCommand: pnpm --filter api exec prisma migrate deploy && pnpm --filter api start
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: crm-secrets
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # External Neon Postgres connection string — paste after first deploy.
+      - key: DATABASE_URL
+        sync: false
+      # External Upstash Redis connection string — paste after first deploy.
+      - key: REDIS_URL
+        sync: false
+      # Your deployed frontend's URL (Vercel/Netlify/etc), used for CORS
+      # and for building links in emails (invites, password resets).
+      # Can be left blank on first deploy and filled in once you have a
+      # frontend URL — just edit it in the dashboard afterward, no need
+      # to touch this file.
+      - key: FRONTEND_URL
+        sync: false
+      - key: EMAIL_FROM
+        value: noreply@yourapp.com
+
+  # ── BullMQ worker (paid plans only — see note above) ──────
+  # Uncomment this whole block once you're on a plan that supports
+  # Background Worker services, and remove startWorkers() from
+  # server.ts so jobs are only processed once, not twice.
+  #
+  # - type: worker
+  #   name: crm-worker
+  #   runtime: node
+  #   plan: starter
+  #   region: oregon
+  #   buildCommand: >-
+  #     pnpm install --frozen-lockfile &&
+  #     pnpm --filter @crm/shared build &&
+  #     pnpm --filter api exec prisma generate &&
+  #     pnpm --filter api build
+  #   startCommand: pnpm --filter api start:worker
+  #   envVars:
+  #     - fromGroup: crm-secrets
+  #     - key: NODE_ENV
+  #       value: production
+  #     - key: DATABASE_URL
+  #       sync: false
+  #     - key: REDIS_URL
+  #       sync: false
+  #     - key: FRONTEND_URL
+  #       sync: false
+  #     - key: EMAIL_FROM
+  #       value: noreply@yourapp.com

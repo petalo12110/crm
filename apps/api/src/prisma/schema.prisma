@@ -1,0 +1,824 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ──────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  COMPANY_OWNER
+  MANAGER
+  SALES_REP
+  SUPPORT
+  EMPLOYEE
+  CUSTOMER
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum OpportunityStage {
+  PROSPECTING
+  QUALIFICATION
+  NEEDS_ANALYSIS
+  VALUE_PROPOSITION
+  DECISION_MAKERS
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  RESOLVED
+  CLOSED
+}
+
+enum EventType {
+  MEETING
+  CALL
+  FOLLOW_UP
+  DEADLINE
+  REMINDER
+  OTHER
+}
+
+enum TimelineEntryType {
+  EMAIL
+  CALL
+  SMS
+  NOTE
+  MEETING
+  TICKET
+  PURCHASE
+  INVOICE
+  STAGE_CHANGE
+  ASSIGNMENT
+  SYSTEM
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE
+  TICKET_ASSIGNED
+  TICKET_UPDATED
+  LEAD_STAGE_CHANGED
+  MENTION
+  CALENDAR_REMINDER
+  SYSTEM
+}
+
+enum FileEntityType {
+  CUSTOMER
+  LEAD
+  OPPORTUNITY
+  TASK
+  TICKET
+  COMPANY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PASSWORD_RESET
+  PERMISSION_CHANGE
+  SETTINGS_CHANGE
+  FILE_UPLOAD
+  FILE_DELETE
+  EXPORT
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+  URL
+  EMAIL
+  PHONE
+}
+
+enum CustomFieldEntity {
+  CUSTOMER
+  LEAD
+  OPPORTUNITY
+  TICKET
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+}
+
+// ── Models ─────────────────────────────────────────────────
+
+model Company {
+  id                 String    @id @default(uuid())
+  name               String    @db.VarChar(255)
+  slug               String    @unique @db.VarChar(100)
+  email              String?   @db.VarChar(255)
+  phone              String?   @db.VarChar(50)
+  addressLine1       String?   @map("address_line1") @db.VarChar(255)
+  addressLine2       String?   @map("address_line2") @db.VarChar(255)
+  city               String?   @db.VarChar(100)
+  province           String?   @db.VarChar(100)
+  postalCode         String?   @map("postal_code") @db.VarChar(20)
+  country            String?   @db.Char(2)
+  website            String?   @db.VarChar(500)
+  logoUrl            String?   @map("logo_url") @db.VarChar(1000)
+  primaryColor       String?   @map("primary_color") @db.Char(7)
+  accentColor        String?   @map("accent_color") @db.Char(7)
+  timezone           String    @default("UTC") @db.VarChar(100)
+  currency           String    @default("USD") @db.Char(3)
+  language           String    @default("en") @db.VarChar(10)
+  dateFormat         String    @default("YYYY-MM-DD") @map("date_format") @db.VarChar(20)
+  workingHoursStart  String    @default("08:00") @map("working_hours_start") @db.VarChar(5)
+  workingHoursEnd    String    @default("17:00") @map("working_hours_end") @db.VarChar(5)
+  taxLabel           String?   @map("tax_label") @db.VarChar(50)
+  taxRate            Decimal   @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  smtpHost           String?   @map("smtp_host") @db.VarChar(255)
+  smtpPort           Int?      @map("smtp_port")
+  smtpUser           String?   @map("smtp_user") @db.VarChar(255)
+  smtpPassEncrypted  String?   @map("smtp_pass_encrypted")
+  smtpFrom           String?   @map("smtp_from") @db.VarChar(255)
+  isActive           Boolean   @default(true) @map("is_active")
+  deletedAt          DateTime? @map("deleted_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  members            CompanyMember[]
+  customers          Customer[]
+  leads              Lead[]
+  opportunities      Opportunity[]
+  tasks              Task[]
+  tickets            Ticket[]
+  calendarEvents     CalendarEvent[]
+  notifications      Notification[]
+  documents          Document[]
+  auditLogs          AuditLog[]
+  customFieldDefs    CustomFieldDefinition[]
+  timelineEntries    TimelineEntry[]
+  notes              Note[]
+  subscription       Subscription?
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("companies")
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  companyId           String             @unique @map("company_id")
+  planTier            PlanTier           @default(FREE) @map("plan_tier")
+  status              SubscriptionStatus @default(TRIALING)
+  trialEndsAt         DateTime?          @map("trial_ends_at")
+  currentPeriodStart  DateTime?          @map("current_period_start")
+  currentPeriodEnd    DateTime?          @map("current_period_end")
+  externalRef         String?            @map("external_ref") @db.VarChar(255)
+  maxUsers            Int                @default(5) @map("max_users")
+  maxCustomers        Int                @default(500) @map("max_customers")
+  maxStorageGb        Int                @default(5) @map("max_storage_gb")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  company             Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique @db.VarChar(255)
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  passwordHash      String    @map("password_hash")
+  firstName         String    @map("first_name") @db.VarChar(100)
+  lastName          String    @map("last_name") @db.VarChar(100)
+  phone             String?   @db.VarChar(50)
+  avatarUrl         String?   @map("avatar_url") @db.VarChar(1000)
+  timezone          String?   @default("UTC") @db.VarChar(100)
+  language          String?   @default("en") @db.VarChar(10)
+  isActive          Boolean   @default(true) @map("is_active")
+  lastLoginAt       DateTime? @map("last_login_at")
+  failedLoginCount  Int       @default(0) @map("failed_login_count")
+  lockedUntil       DateTime? @map("locked_until")
+  gdprConsentAt     DateTime? @map("gdpr_consent_at")
+  deletedAt         DateTime? @map("deleted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  memberships       CompanyMember[]
+  refreshTokens     RefreshToken[]
+  passwordResets    PasswordResetToken[]
+  ownedCustomers    Customer[]           @relation("CustomerOwner")
+  assignedCustomers Customer[]           @relation("CustomerAssignee")
+  ownedLeads        Lead[]               @relation("LeadOwner")
+  assignedLeads     Lead[]               @relation("LeadAssignee")
+  assignedOpps      Opportunity[]
+  createdTasks      Task[]               @relation("TaskCreator")
+  assignedTasks     Task[]               @relation("TaskAssignee")
+  createdTickets    Ticket[]             @relation("TicketCreator")
+  assignedTickets   Ticket[]             @relation("TicketAssignee")
+  escalatedTickets  Ticket[]             @relation("TicketEscalatee")
+  ticketReplies     TicketReply[]
+  calendarEvents    CalendarEvent[]
+  eventAttendances  EventAttendee[]
+  notifications     Notification[]
+  uploadedDocs      Document[]
+  auditLogs         AuditLog[]
+  timelineEntries   TimelineEntry[]
+  notes             Note[]
+  taskComments      TaskComment[]
+  stageHistory      LeadStageHistory[]
+  oppStageHistory   OpportunityStageHistory[]
+
+  @@index([email])
+  @@index([isActive])
+  @@map("users")
+}
+
+model CompanyMember {
+  id         String    @id @default(uuid())
+  companyId  String    @map("company_id")
+  userId     String    @map("user_id")
+  role       UserRole
+  department String?   @db.VarChar(100)
+  jobTitle   String?   @map("job_title") @db.VarChar(100)
+  isActive           Boolean   @default(true) @map("is_active")
+  notificationPrefs  Json?     @map("notification_prefs")
+  joinedAt   DateTime  @default(now()) @map("joined_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId],    references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([companyId, role])
+  @@map("company_members")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  familyId   String    @map("family_id")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  userAgent  String?   @map("user_agent")
+  ipAddress  String?   @map("ip_address")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Customer {
+  id            String    @id @default(uuid())
+  companyId     String    @map("company_id")
+  firstName     String?   @map("first_name") @db.VarChar(100)
+  lastName      String?   @map("last_name") @db.VarChar(100)
+  email         String?   @db.VarChar(255)
+  phone         String?   @db.VarChar(50)
+  phoneAlt      String?   @map("phone_alt") @db.VarChar(50)
+  addressLine1  String?   @map("address_line1") @db.VarChar(255)
+  addressLine2  String?   @map("address_line2") @db.VarChar(255)
+  city          String?   @db.VarChar(100)
+  province      String?   @db.VarChar(100)
+  postalCode    String?   @map("postal_code") @db.VarChar(20)
+  country       String?   @db.Char(2)
+  companyName   String?   @map("company_name") @db.VarChar(255)
+  industry      String?   @db.VarChar(100)
+  website       String?   @db.VarChar(500)
+  taxIdEncrypted String?  @map("tax_id_encrypted")
+  status        String    @default("ACTIVE") @db.VarChar(50)
+  customerType  String    @default("INDIVIDUAL") @map("customer_type") @db.VarChar(50)
+  tags          String[]  @default([])
+  ownerId       String?   @map("owner_id")
+  assignedTo    String?   @map("assigned_to")
+  avatarUrl     String?   @map("avatar_url") @db.VarChar(1000)
+  notes         String?
+  aiSummary     String?   @map("ai_summary")
+  aiChurnRisk   Decimal?  @map("ai_churn_risk") @db.Decimal(4, 3)
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  owner         User?     @relation("CustomerOwner",    fields: [ownerId],    references: [id], onDelete: SetNull)
+  assignee      User?     @relation("CustomerAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  leads         Lead[]
+  opportunities Opportunity[]
+  tickets       Ticket[]
+  timelineEntries TimelineEntry[]
+  ticketReplies TicketReply[]
+  customFieldValues CustomFieldValue[]
+  eventAttendees  EventAttendee[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([assignedTo])
+  @@index([email])
+  @@map("customers")
+}
+
+model CustomFieldDefinition {
+  id           String            @id @default(uuid())
+  companyId    String            @map("company_id")
+  entityType   CustomFieldEntity @map("entity_type")
+  fieldKey     String            @map("field_key") @db.VarChar(100)
+  label        String            @db.VarChar(255)
+  fieldType    CustomFieldType   @map("field_type")
+  options      Json?
+  isRequired   Boolean           @default(false) @map("is_required")
+  isSearchable Boolean           @default(false) @map("is_searchable")
+  sortOrder    Int               @default(0) @map("sort_order")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  values       CustomFieldValue[]
+
+  @@unique([companyId, entityType, fieldKey])
+  @@index([companyId, entityType])
+  @@map("custom_field_definitions")
+}
+
+model CustomFieldValue {
+  id            String            @id @default(uuid())
+  definitionId  String            @map("definition_id")
+  entityId      String            @map("entity_id")
+  entityType    CustomFieldEntity @map("entity_type")
+  valueText     String?           @map("value_text")
+  valueNumber   Decimal?          @map("value_number")
+  valueDate     DateTime?         @map("value_date") @db.Date
+  valueBoolean  Boolean?          @map("value_boolean")
+  valueJson     Json?             @map("value_json")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  definition    CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  customer      Customer?         @relation(fields: [entityId], references: [id], onDelete: Cascade, map: "cfv_customer_fk")
+
+  @@unique([definitionId, entityId])
+  @@index([entityId, entityType])
+  @@map("custom_field_values")
+}
+
+model Lead {
+  id            String     @id @default(uuid())
+  companyId     String     @map("company_id")
+  customerId    String?    @map("customer_id")
+  title         String     @db.VarChar(255)
+  source        String?    @db.VarChar(100)
+  campaign      String?    @db.VarChar(255)
+  stage         LeadStage  @default(NEW)
+  value         Decimal?   @db.Decimal(15, 2)
+  probability   Decimal?   @db.Decimal(5, 2)
+  expectedClose DateTime?  @map("expected_close") @db.Date
+  assignedTo    String?    @map("assigned_to")
+  ownerId       String?    @map("owner_id")
+  lostReason    String?    @map("lost_reason")
+  notes         String?
+  tags          String[]   @default([])
+  aiScore       Decimal?   @map("ai_score") @db.Decimal(4, 3)
+  deletedAt     DateTime?  @map("deleted_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  company       Company    @relation(fields: [companyId],  references: [id], onDelete: Cascade)
+  customer      Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignee      User?      @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  owner         User?      @relation("LeadOwner",    fields: [ownerId],    references: [id], onDelete: SetNull)
+  opportunities Opportunity[]
+  stageHistory  LeadStageHistory[]
+
+  @@index([companyId])
+  @@index([companyId, stage])
+  @@index([assignedTo])
+  @@index([customerId])
+  @@map("leads")
+}
+
+model LeadStageHistory {
+  id        String     @id @default(uuid())
+  leadId    String     @map("lead_id")
+  fromStage LeadStage? @map("from_stage")
+  toStage   LeadStage  @map("to_stage")
+  changedBy String?    @map("changed_by")
+  note      String?
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  lead      Lead       @relation(fields: [leadId],    references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@map("lead_stage_history")
+}
+
+model Opportunity {
+  id              String           @id @default(uuid())
+  companyId       String           @map("company_id")
+  customerId      String?          @map("customer_id")
+  leadId          String?          @map("lead_id")
+  title           String           @db.VarChar(255)
+  stage           OpportunityStage @default(PROSPECTING)
+  expectedRevenue Decimal?         @map("expected_revenue") @db.Decimal(15, 2)
+  probability     Decimal?         @db.Decimal(5, 2)
+  expectedClose   DateTime?        @map("expected_close") @db.Date
+  quotedValue     Decimal?         @map("quoted_value") @db.Decimal(15, 2)
+  competitors     String[]         @default([])
+  products        String[]         @default([])
+  assignedTo      String?          @map("assigned_to")
+  notes           String?
+  deletedAt       DateTime?        @map("deleted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead            Lead?            @relation(fields: [leadId],     references: [id], onDelete: SetNull)
+  assignee        User?            @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+  stageHistory    OpportunityStageHistory[]
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([companyId, stage])
+  @@index([assignedTo])
+  @@map("opportunities")
+}
+
+model OpportunityStageHistory {
+  id        String           @id @default(uuid())
+  oppId     String           @map("opp_id")
+  fromStage OpportunityStage? @map("from_stage")
+  toStage   OpportunityStage  @map("to_stage")
+  changedBy String?           @map("changed_by")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  opportunity Opportunity @relation(fields: [oppId],     references: [id], onDelete: Cascade)
+  user        User?       @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([oppId])
+  @@map("opportunity_stage_history")
+}
+
+model Task {
+  id             String        @id @default(uuid())
+  companyId      String        @map("company_id")
+  title          String        @db.VarChar(255)
+  description    String?
+  priority       TaskPriority  @default(MEDIUM)
+  status         TaskStatus    @default(OPEN)
+  dueDate        DateTime?     @map("due_date")
+  entityType     String?       @map("entity_type") @db.VarChar(50)
+  entityId       String?       @map("entity_id")
+  assignedTo     String?       @map("assigned_to")
+  createdBy      String?       @map("created_by")
+  recurrenceRule String?       @map("recurrence_rule")
+  parentTaskId   String?       @map("parent_task_id")
+  estimatedMins  Int?          @map("estimated_mins")
+  actualMins     Int?          @map("actual_mins")
+  completedAt    DateTime?     @map("completed_at")
+  deletedAt      DateTime?     @map("deleted_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignee       User?         @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator        User?         @relation("TaskCreator",  fields: [createdBy],  references: [id], onDelete: SetNull)
+  parentTask     Task?         @relation("TaskChildren", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks     Task[]        @relation("TaskChildren")
+  comments       TaskComment[]
+
+  @@index([companyId])
+  @@index([assignedTo])
+  @@index([companyId, status])
+  @@index([dueDate])
+  @@index([entityType, entityId])
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String    @id @default(uuid())
+  taskId    String    @map("task_id")
+  userId    String    @map("user_id")
+  body      String
+  editedAt  DateTime? @map("edited_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  task      Task      @relation(fields: [taskId],  references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId],  references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model Ticket {
+  id             String         @id @default(uuid())
+  companyId      String         @map("company_id")
+  customerId     String?        @map("customer_id")
+  ticketNumber   String         @map("ticket_number") @db.VarChar(20)
+  title          String         @db.VarChar(255)
+  description    String?
+  priority       TicketPriority @default(MEDIUM)
+  status         TicketStatus   @default(OPEN)
+  department     String?        @db.VarChar(100)
+  category       String?        @db.VarChar(100)
+  assignedTo     String?        @map("assigned_to")
+  createdBy      String?        @map("created_by")
+  slaDeadline    DateTime?      @map("sla_deadline")
+  slaBreached    Boolean        @default(false) @map("sla_breached")
+  firstResponseAt DateTime?     @map("first_response_at")
+  resolvedAt     DateTime?      @map("resolved_at")
+  closedAt       DateTime?      @map("closed_at")
+  resolution     String?
+  escalatedAt    DateTime?      @map("escalated_at")
+  escalatedTo    String?        @map("escalated_to")
+  deletedAt      DateTime?      @map("deleted_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  company        Company        @relation(fields: [companyId],  references: [id], onDelete: Cascade)
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignee       User?          @relation("TicketAssignee",  fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator        User?          @relation("TicketCreator",   fields: [createdBy],  references: [id], onDelete: SetNull)
+  escalatee      User?          @relation("TicketEscalatee", fields: [escalatedTo], references: [id], onDelete: SetNull)
+  replies        TicketReply[]
+
+  @@unique([companyId, ticketNumber])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([assignedTo])
+  @@index([companyId, status])
+  @@index([companyId, priority])
+  @@map("tickets")
+}
+
+model TicketReply {
+  id         String    @id @default(uuid())
+  ticketId   String    @map("ticket_id")
+  userId     String?   @map("user_id")
+  customerId String?   @map("customer_id")
+  body       String
+  isInternal Boolean   @default(false) @map("is_internal")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  ticket     Ticket    @relation(fields: [ticketId],   references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [userId],     references: [id], onDelete: SetNull)
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@map("ticket_replies")
+}
+
+model CalendarEvent {
+  id             String     @id @default(uuid())
+  companyId      String     @map("company_id")
+  createdBy      String     @map("created_by")
+  title          String     @db.VarChar(255)
+  description    String?
+  eventType      EventType  @default(OTHER) @map("event_type")
+  startsAt       DateTime   @map("starts_at")
+  endsAt         DateTime?  @map("ends_at")
+  allDay         Boolean    @default(false) @map("all_day")
+  location       String?    @db.VarChar(500)
+  entityType     String?    @map("entity_type") @db.VarChar(50)
+  entityId       String?    @map("entity_id")
+  recurrenceRule String?    @map("recurrence_rule")
+  externalId     String?    @map("external_id") @db.VarChar(255)
+  externalSource String?    @map("external_source") @db.VarChar(50)
+  reminderMins   Int[]      @map("reminder_mins") @default([])
+  deletedAt      DateTime?  @map("deleted_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator        User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  attendees      EventAttendee[]
+
+  @@index([companyId])
+  @@index([createdBy])
+  @@index([startsAt])
+  @@index([entityType, entityId])
+  @@map("calendar_events")
+}
+
+model EventAttendee {
+  id         String   @id @default(uuid())
+  eventId    String   @map("event_id")
+  userId     String?  @map("user_id")
+  customerId String?  @map("customer_id")
+  status     String   @default("PENDING") @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  event      CalendarEvent @relation(fields: [eventId],    references: [id], onDelete: Cascade)
+  user       User?         @relation(fields: [userId],     references: [id], onDelete: Cascade)
+  customer   Customer?     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@map("event_attendees")
+}
+
+model TimelineEntry {
+  id            String            @id @default(uuid())
+  companyId     String            @map("company_id")
+  customerId    String            @map("customer_id")
+  entryType     TimelineEntryType @map("entry_type")
+  direction     Direction         @default(INTERNAL)
+  subject       String?           @db.VarChar(500)
+  body          String?
+  userId        String?           @map("user_id")
+  refEntityType String?           @map("ref_entity_type") @db.VarChar(50)
+  refEntityId   String?           @map("ref_entity_id")
+  metadata      Json?
+  occurredAt    DateTime          @default(now()) @map("occurred_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  company       Company           @relation(fields: [companyId],  references: [id], onDelete: Cascade)
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user          User?             @relation(fields: [userId],     references: [id], onDelete: SetNull)
+
+  @@index([customerId, occurredAt(sort: Desc)])
+  @@index([companyId])
+  @@index([refEntityType, refEntityId])
+  @@map("timeline_entries")
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  companyId  String           @map("company_id")
+  userId     String           @map("user_id")
+  type       NotificationType
+  title      String           @db.VarChar(255)
+  body       String?
+  entityType String?          @map("entity_type") @db.VarChar(50)
+  entityId   String?          @map("entity_id")
+  url        String?          @db.VarChar(1000)
+  priority   Int              @default(1)
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId],    references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@index([companyId])
+  @@map("notifications")
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  companyId    String         @map("company_id")
+  uploadedBy   String?        @map("uploaded_by")
+  entityType   FileEntityType @map("entity_type")
+  entityId     String         @map("entity_id")
+  folder       String         @default("/") @db.VarChar(255)
+  originalName String         @map("original_name") @db.VarChar(500)
+  storageKey   String         @map("storage_key") @db.VarChar(1000)
+  mimeType     String         @map("mime_type") @db.VarChar(127)
+  sizeBytes    BigInt         @map("size_bytes")
+  version      Int            @default(1)
+  parentId     String?        @map("parent_id")
+  checksum     String?        @db.Char(64)
+  isPublic     Boolean        @default(false) @map("is_public")
+  deletedAt    DateTime?      @map("deleted_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uploader     User?          @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+  parent       Document?      @relation("DocumentVersions", fields: [parentId], references: [id], onDelete: SetNull)
+  versions     Document[]     @relation("DocumentVersions")
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+  @@map("documents")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  companyId  String?     @map("company_id")
+  userId     String?     @map("user_id")
+  action     AuditAction
+  entityType String?     @map("entity_type") @db.VarChar(100)
+  entityId   String?     @map("entity_id")
+  ipAddress  String?     @map("ip_address") @db.VarChar(45)
+  userAgent  String?     @map("user_agent")
+  oldValues  Json?       @map("old_values")
+  newValues  Json?       @map("new_values")
+  metadata   Json?
+  occurredAt DateTime    @default(now()) @map("occurred_at")
+
+  company    Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  user       User?       @relation(fields: [userId],    references: [id], onDelete: SetNull)
+
+  @@index([companyId, occurredAt(sort: Desc)])
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([action, occurredAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model Note {
+  id         String    @id @default(uuid())
+  companyId  String    @map("company_id")
+  createdBy  String?   @map("created_by")
+  entityType String    @map("entity_type") @db.VarChar(50)
+  entityId   String    @map("entity_id")
+  body       String
+  isPinned   Boolean   @default(false) @map("is_pinned")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator    User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([companyId])
+  @@map("notes")
+}
