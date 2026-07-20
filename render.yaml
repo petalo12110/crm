@@ -52,12 +52,10 @@ services:
     plan: free
     region: oregon
     buildCommand: >-
-      npm install -g pnpm@9.15.9 &&
+      npm install -g pnpm
       echo "--- which pnpm ---" && which -a pnpm &&
       echo "--- pnpm --version ---" && pnpm --version &&
-      pnpm install --frozen-lockfile 2>&1 | tee /tmp/install.log &&
-      echo "--- ignored build scripts check ---" && (grep -i "ignored" /tmp/install.log || echo "NO IGNORED-SCRIPTS WARNING FOUND") &&
-      echo "--- prisma bin check ---" && ls -la apps/api/node_modules/.bin/ | grep -i prisma || echo "NO PRISMA BIN FOUND" &&
+      pnpm install
       pnpm --filter @crm/shared build &&
       pnpm --filter api exec prisma generate &&
       pnpm --filter api build
@@ -86,7 +84,7 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: EMAIL_FROM
-        value: noreply@yourapp.com
+        value: noreply@crm.com
 
   # ── BullMQ worker (paid plans only — see note above) ──────
   # Uncomment this whole block once you're on a plan that supports
