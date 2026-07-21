@@ -23,10 +23,6 @@ const EnvSchema = z.object({
   S3_REGION:    z.string().optional(),
   S3_ACCESS_KEY:z.string().optional(),
   S3_SECRET_KEY:z.string().optional(),
-  // Only needed for S3-compatible providers (Cloudflare R2, Backblaze B2,
-  // MinIO, etc.) — leave unset for real AWS S3.
-  S3_ENDPOINT:          z.string().optional(),
-  S3_FORCE_PATH_STYLE:  z.coerce.boolean().default(false),
 
   FRONTEND_URL:       z.string().default('http://localhost:5173'),
   MAX_FILE_SIZE_MB:   z.coerce.number().default(25),
@@ -45,22 +41,7 @@ const EnvSchema = z.object({
   LOCKOUT_MINUTES:     z.coerce.number().default(15),
 })
 
-const RefinedEnvSchema = EnvSchema.superRefine((env, ctx) => {
-  if (env.STORAGE_PROVIDER === 's3') {
-    const required = ['S3_BUCKET', 'S3_REGION', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'] as const
-    for (const key of required) {
-      if (!env[key]) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [key],
-          message: `${key} is required when STORAGE_PROVIDER=s3`,
-        })
-      }
-    }
-  }
-})
-
-const parsed = RefinedEnvSchema.safeParse(process.env)
+const parsed = EnvSchema.safeParse(process.env)
 
 if (!parsed.success) {
   console.error('❌  Environment variable validation failed:')

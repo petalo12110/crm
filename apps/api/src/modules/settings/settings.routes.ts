@@ -3,8 +3,7 @@ import { authenticate }     from '../../delivery/middleware/authenticate'
 import { authorize, ROLES } from '../../delivery/middleware/authorize'
 import { prisma }           from '../../infrastructure/database/prisma'
 import { auditService }     from '../audit/audit.service'
-import { encrypt, decrypt, requireCompanyId } from '../../core/utils/index'
-import { config } from '../../config/env'
+import { encrypt, requireCompanyId } from '../../core/utils/index'
 import { UpdateCompanySettingsSchema, UpdateSmtpSettingsSchema } from '@crm/shared'
 import { z }                from 'zod'
 
@@ -80,14 +79,7 @@ router.post('/email/test', authenticate, authorize(ROLES.OWNER_ONLY), async (req
     if (!company?.smtpHost) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SMTP settings not configured' } })
     }
-    const provider = new SmtpEmailProvider({
-      host:      company.smtpHost,
-      port:      company.smtpPort ?? 587,
-      secure:    company.smtpPort === 465,
-      user:      company.smtpUser ?? '',
-      pass:      company.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : '',
-      emailFrom: company.smtpFrom ?? config.EMAIL_FROM,
-    })
+    const provider = new SmtpEmailProvider()
     const ok = await provider.verify()
     res.json({ success: true, data: { connected: ok } })
   } catch (err) { next(err) }

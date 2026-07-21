@@ -44,7 +44,6 @@ export class PortalService {
       to:      customer.email!,
       subject: `Your ${company.name} support portal login link`,
       template: 'portal-login',
-      companyId: company.id,
       context: {
         firstName:   customer.firstName ?? 'there',
         companyName: company.name,

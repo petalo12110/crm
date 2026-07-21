@@ -1,15 +1,16 @@
 packages:
   - 'apps/*'
   - 'packages/*'
-
-# Testing this location combined with the confirmed pnpm@9.15.9 pin in
-# render.yaml — package.json's "pnpm.onlyBuiltDependencies" has shown the
-# "no longer read" deprecation warning even under 9.15.9, so this may be
-# the version where the setting actually needs to live here instead.
-onlyBuiltDependencies:
-  - '@prisma/client'
-  - '@prisma/engines'
-  - prisma
-  - esbuild
-  - msgpackr-extract
-  - sharp
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  # Pulled in transitively by @capacitor/assets (apps/web, Android icon
+  # generation) — pnpm's build-script-approval gate flagged this the same
+  # way it did for prisma/esbuild above. Locally that's just an
+  # interactive `pnpm approve-builds` prompt, but Render's build has no
+  # terminal to answer a prompt — left unapproved, it would fail the
+  # deploy outright instead of just warning.
+  sharp: true

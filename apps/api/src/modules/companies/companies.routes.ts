@@ -130,8 +130,7 @@ router.post('/', authenticate, authorize(ROLES.SUPER_ONLY), async (req: Request,
     if (result.ownerUser && result.isNewUser) {
       await authService.sendWelcomeEmail(
         { id: result.ownerUser.id, email: result.ownerUser.email, firstName: result.ownerUser.firstName },
-        result.company.name,
-        result.company.id
+        result.company.name
       )
     }
 
@@ -299,8 +298,7 @@ router.post('/:id/members', authenticate, authorize([...ROLES.OWNER_ONLY, 'SUPER
     if (isNewUser) {
       await authService.sendWelcomeEmail(
         { id: user.id, email: user.email, firstName: user.firstName },
-        company.name,
-        company.id
+        company.name
       )
     }
 

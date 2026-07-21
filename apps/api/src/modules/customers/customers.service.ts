@@ -38,9 +38,8 @@ export class CustomersService {
    * closes the gap where the timeline could only ever record that a call
    * or email happened after the fact, with no way to actually send one
    * from inside the app. Reuses the same queue -> worker -> SMTP pipeline
-   * built for invites/password resets. Uses this company's own SMTP
-   * settings (Settings > Email) if configured, falling back to the
-   * platform default (Super Admin > Email) otherwise.
+   * built for invites/password resets, so it's subject to the same
+   * platform SMTP configuration (Super Admin > Email tab).
    */
   async sendEmail(user: AuthUser, customerId: string, dto: { subject: string; body: string }) {
     const companyId = requireCompanyId(user)
@@ -58,7 +57,6 @@ export class CustomersService {
       to:      customer.email,
       subject: dto.subject,
       template: 'customer-email',
-      companyId,
       context: {
         // Line breaks need to survive into HTML — the template renders
         // this pre-escaped/converted rather than trusting raw agent input

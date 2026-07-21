@@ -265,8 +265,7 @@ export class AuthService {
    */
   async sendWelcomeEmail(
     user: { id: string; email: string; firstName: string },
-    companyName: string,
-    companyId: string
+    companyName: string
   ): Promise<void> {
     const rawToken     = generateSecureToken(32)
     const tokenHash     = hashToken(rawToken)
@@ -279,7 +278,6 @@ export class AuthService {
       to:       user.email,
       subject:  `You've been added to ${companyName}`,
       template: 'welcome',
-      companyId,
       context: {
         firstName:      user.firstName,
         companyName,

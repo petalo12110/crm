@@ -3,7 +3,7 @@ import { config }      from '../../config/env'
 import { log }         from '../../config/logger'
 import { prisma }      from '../database/prisma'
 import { decrypt }     from '../../core/utils/index'
-import { sendEmailWithConfig, renderTemplate, type SmtpConfig } from '../email/EmailProvider'
+import { defaultEmailProvider, renderTemplate, type SmtpConfig } from '../email/EmailProvider'
 import { notificationsService } from '../../modules/notifications/notifications.service'
 import type { EmailJobData, NotificationJobData } from './queues'
 
@@ -30,71 +30,42 @@ import type { EmailJobData, NotificationJobData } from './queues'
 export function startWorkers() {
   const connection = { url: config.REDIS_URL }
 
-  // ── SMTP config resolution ────────────────────────────────────
+  // ── SMTP hot-reload ──────────────────────────────────────────
   //
-  // Priority: the sending company's own SMTP settings (Company.smtp*,
-  // configured via Settings > Email by a company owner) > the global
-  // platform default (SystemSettings, configured by a Super Admin) >
-  // env vars / Mailpit-friendly localhost default.
-  //
-  // Resolved fresh per job (not cached on a shared mutable instance) so
-  // concurrent jobs for different companies can never race with each
-  // other over which SMTP config is "currently active" — see
-  // sendEmailWithConfig in EmailProvider.ts for the concurrency-safe
-  // send path this feeds into.
-  function envFallbackConfig(): SmtpConfig {
-    return {
-      host:      config.SMTP_HOST ?? 'localhost',
-      port:      config.SMTP_PORT ?? 587,
-      secure:    config.SMTP_PORT === 465,
-      user:      config.SMTP_USER ?? '',
-      pass:      config.SMTP_PASS ?? '',
-      emailFrom: config.EMAIL_FROM,
-    }
-  }
-
-  async function resolveSmtpConfig(companyId?: string): Promise<SmtpConfig> {
+  // When running as a separate process, the worker doesn't know when a
+  // Super Admin saves new SMTP settings via the API. Rather than
+  // requiring a restart, every email job re-checks the saved settings
+  // first and reconfigures the shared SmtpEmailProvider in place if
+  // they've changed (SmtpEmailProvider.configure is a no-op if the
+  // config signature is unchanged, so this is cheap). Harmless — if
+  // anything, slightly redundant — when running combined in the same
+  // process as the API, since that process already has the latest
+  // config in memory from whoever last saved it.
+  async function syncSmtpConfigFromDb(): Promise<void> {
     try {
-      if (companyId) {
-        const company = await prisma.company.findUnique({
-          where:  { id: companyId },
-          select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPassEncrypted: true, smtpFrom: true },
-        })
-        if (company?.smtpHost) {
-          return {
-            host:      company.smtpHost,
-            port:      company.smtpPort ?? 587,
-            secure:    company.smtpPort === 465,
-            user:      company.smtpUser ?? '',
-            pass:      company.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : '',
-            emailFrom: company.smtpFrom ?? config.EMAIL_FROM,
-          }
-        }
-      }
+      const row = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
+      if (!row?.smtpHost) return
 
-      const globalRow = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
-      if (globalRow?.smtpHost) {
-        return {
-          host:      globalRow.smtpHost,
-          port:      globalRow.smtpPort ?? 587,
-          secure:    globalRow.smtpSecure,
-          user:      globalRow.smtpUser ?? '',
-          pass:      globalRow.smtpPassEncrypted ? decrypt(globalRow.smtpPassEncrypted) : '',
-          emailFrom: globalRow.emailFrom ?? config.EMAIL_FROM,
-        }
+      const cfg: SmtpConfig = {
+        host:      row.smtpHost,
+        port:      row.smtpPort ?? 587,
+        secure:    row.smtpSecure,
+        user:      row.smtpUser ?? '',
+        pass:      row.smtpPassEncrypted ? decrypt(row.smtpPassEncrypted) : '',
+        emailFrom: row.emailFrom ?? config.EMAIL_FROM,
       }
+      defaultEmailProvider.configure(cfg)
     } catch (err) {
-      log.error('Failed to resolve SMTP config from database, falling back to env vars', { err: String(err) })
+      log.error('Failed to sync SMTP config from database', { err: String(err) })
     }
-    return envFallbackConfig()
   }
 
   const emailWorker = new Worker<EmailJobData>(
     'email',
     async (job: Job<EmailJobData>) => {
-      const cfg  = await resolveSmtpConfig(job.data.companyId)
+      await syncSmtpConfigFromDb()
       const html = renderTemplate(job.data.template, job.data.context)
-      await sendEmailWithConfig(cfg, {
+      await defaultEmailProvider.send({
         to:      job.data.to,
         subject: job.data.subject,
         html,

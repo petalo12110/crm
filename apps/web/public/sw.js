@@ -14,15 +14,5 @@ self.addEventListener('activate', event => {
 })
 
 self.addEventListener('fetch', event => {
-  // fetch() cannot be called on a navigation-mode request (loading a page
-  // directly, e.g. /admin) — the Fetch spec forbids it and throws
-  // "TypeError: Failed to fetch". Let the browser handle those normally.
-  if (event.request.mode === 'navigate') return
-
-  // No reason to intercept cross-origin calls (e.g. our own API on a
-  // different domain) — we do no caching, so just let those go straight
-  // through untouched rather than re-wrapping them for no benefit.
-  if (new URL(event.request.url).origin !== self.location.origin) return
-
   event.respondWith(fetch(event.request))
 })

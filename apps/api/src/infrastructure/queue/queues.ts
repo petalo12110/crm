@@ -40,13 +40,6 @@ export interface EmailJobData {
   template: string
   context:  Record<string, unknown>
   from?:    string
-  /**
-   * When set, the worker prefers this company's own SMTP settings
-   * (Company.smtp*) over the global platform default (SystemSettings),
-   * for company-branded outbound mail. Falls back to the global config,
-   * then to env vars, if the company hasn't configured its own SMTP.
-   */
-  companyId?: string
 }
 
 export interface NotificationJobData {

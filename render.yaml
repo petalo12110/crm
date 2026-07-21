@@ -33,16 +33,8 @@ envVarGroups:
     envVars:
       - key: JWT_SECRET
         generateValue: true
-      # NOT generateValue: Render's generator produces a base64-encoded
-      # 256-bit value (~44 chars, with +/= characters) — but the app
-      # requires exactly 64 hex characters (32 raw bytes) for AES-256-GCM
-      # (see apps/api/src/config/env.ts and core/utils/index.ts). A
-      # generated value would fail env validation on every boot and the
-      # service would never come up. Generate it yourself and paste it in
-      # the dashboard after first deploy:
-      #   openssl rand -hex 32
       - key: ENCRYPTION_KEY
-        sync: false
+        generateValue: true
 
 services:
   # ── API server (handles HTTP + background jobs) ──────────
@@ -52,11 +44,7 @@ services:
     plan: free
     region: oregon
     buildCommand: >-
-      npm install -g pnpm@9.15.9 &&
-      echo "--- which pnpm ---" && which -a pnpm &&
-      echo "--- pnpm --version ---" && pnpm --version &&
-      pnpm install --frozen-lockfile --force 2>&1 | tee /tmp/install.log &&
-      echo "--- prisma bin check ---" && ls -la apps/api/node_modules/.bin/ | grep -i prisma || echo "NO PRISMA BIN FOUND" &&
+      pnpm install --frozen-lockfile &&
       pnpm --filter @crm/shared build &&
       pnpm --filter api exec prisma generate &&
       pnpm --filter api build
