@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.android
+!.env.example
+!.env.android.example
+
+# Prisma generated
+apps/api/node_modules/.prisma/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Uploads (local storage)
+apps/api/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Docker
+certs/
+
+# Android (Capacitor) — signing keys and machine-specific/generated files.
+# The android/ project itself is committed (it holds real config: icon
+# refs, appId, etc that took effort to generate) but never these:
+apps/web/android/app/release-key.jks
+apps/web/android/**/*.jks
+apps/web/android/**/*.keystore
+apps/web/android/keystore.properties
+apps/web/android/local.properties
+apps/web/android/.gradle/
+apps/web/android/app/build/
+apps/web/android/build/
+apps/web/android/captures/
+*.apk
+*.aab

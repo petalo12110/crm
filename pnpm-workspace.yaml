@@ -1,0 +1,16 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Approves install/build scripts for packages that need native setup
+# (prisma's CLI setup, sharp's native binary, etc). The actual fix for
+# "prisma: command not found" on Render was moving prisma from
+# devDependencies to dependencies in apps/api/package.json — see Prisma's
+# own deployment docs. This list stays as defense-in-depth for the others.
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - prisma
+  - esbuild
+  - msgpackr-extract
+  - sharp

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Ticket Update</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+  <h2>Ticket {{ticketNumber}} Updated</h2>
+  <p>Hello {{firstName}},</p>
+  <p>Your support ticket <strong>{{title}}</strong> has been updated.</p>
+  <p><strong>Status:</strong> {{status}}</p>
+  {{#if replyBody}}
+  <p><strong>Latest reply:</strong></p>
+  <blockquote style="border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b">{{replyBody}}</blockquote>
+  {{/if}}
+  <p><a href="{{ticketUrl}}">View ticket →</a></p>
+  <p>— Support Team</p>
+</body>
+</html>

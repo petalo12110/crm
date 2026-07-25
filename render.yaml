@@ -1,0 +1,75 @@
+services:
+  - type: web
+    name: crm-api
+    runtime: node
+    plan: free
+    rootDir: .
+
+    # npm install -g pins the exact pnpm version this project was built
+    # against, as defense-in-depth against Render's ambient pnpm drifting
+    # to a newer major (this cost us a lot of debugging time previously).
+    # The actual fix for "prisma: command not found" was moving `prisma`
+    # from devDependencies to dependencies in apps/api/package.json —
+    # per Prisma's own docs, devDependency installation isn't reliable
+    # across every deploy platform's build step.
+    buildCommand: >-
+      npm install -g pnpm@9.15.9 &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @crm/shared build &&
+      pnpm --filter api exec prisma generate &&
+      pnpm --filter api build
+
+    # Migrations run once per deploy, right before the new instance takes
+    # traffic. Requires prisma/migrations to contain a single clean init
+    # migration (see README — generate this once locally with
+    # `prisma migrate diff --from-empty ...` before your first deploy;
+    # it's gitignored from this template on purpose so you generate one
+    # that matches YOUR actual schema at the time you deploy).
+    startCommand: pnpm --filter api exec prisma migrate deploy && pnpm --filter api start
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+
+      # Free tier has no separate Background Worker service type, so the
+      # BullMQ worker runs embedded inside this same process — see
+      # startWorkers.ts. Keep at 1: a second instance would double-process
+      # every queued job (duplicate emails, etc).
+      - key: WEB_CONCURRENCY
+        value: 1
+
+      # Set these in Render's dashboard, never here — Blueprint values are
+      # visible in git. sync: false makes Render prompt you for a real
+      # value on first deploy instead of silently defaulting to blank.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      # SMTP — genuinely required, not optional. Without these, password
+      # resets and new-employee invites silently fail to send (the token
+      # is created in the DB but the email never arrives). Any standard
+      # SMTP provider works; Resend/SendGrid/Mailgun all have workable
+      # free tiers. See README's "Email setup" section for exact values.
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+      # ENCRYPTION_KEY must be exactly 64 hex chars: `openssl rand -hex 32`
+      # JWT_SECRET can be any long random string: `openssl rand -base64 32`
+      # Generate locally, paste directly into Render's dashboard — never
+      # commit real values, and never paste them into a chat/ticket/log.
+      - fromGroup: crm-secrets
