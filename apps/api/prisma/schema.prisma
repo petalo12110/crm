@@ -198,6 +198,11 @@ model Company {
   smtpUser           String?   @map("smtp_user") @db.VarChar(255)
   smtpPassEncrypted  String?   @map("smtp_pass_encrypted")
   smtpFrom           String?   @map("smtp_from") @db.VarChar(255)
+  // "smtp" (nodemailer over SMTP ports — blocked on Render's free tier) or
+  // "resend" (Resend's HTTPS API — works anywhere, including behind a
+  // free-tier SMTP port block, since it's just a normal HTTPS request).
+  emailProvider      String    @default("smtp") @map("email_provider") @db.VarChar(20)
+  resendApiKeyEncrypted String? @map("resend_api_key_encrypted")
   isActive           Boolean   @default(true) @map("is_active")
   deletedAt          DateTime? @map("deleted_at")
   createdAt          DateTime  @default(now()) @map("created_at")
@@ -237,6 +242,8 @@ model SystemSettings {
   smtpSecure         Boolean   @default(false) @map("smtp_secure")
   smtpUser           String?   @map("smtp_user") @db.VarChar(255)
   smtpPassEncrypted  String?   @map("smtp_pass_encrypted")
+  emailProvider      String    @default("smtp") @map("email_provider") @db.VarChar(20)
+  resendApiKeyEncrypted String? @map("resend_api_key_encrypted")
   emailFrom          String?   @map("email_from") @db.VarChar(255)
   updatedAt          DateTime  @updatedAt @map("updated_at")
   updatedBy          String?   @map("updated_by")

@@ -54,98 +54,120 @@ router.patch('/', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request
   } catch (err) { next(err) }
 })
 
-// Get SMTP settings (password never returned — only whether one is set)
+// Get email settings (secrets never returned — only whether one is set)
 router.get('/email', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const company = await prisma.company.findFirst({
       where:  { id: requireCompanyId(req.user), deletedAt: null },
-      select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpFrom: true, smtpPassEncrypted: true },
+      select: {
+        smtpHost: true, smtpPort: true, smtpUser: true, smtpFrom: true, smtpPassEncrypted: true,
+        emailProvider: true, resendApiKeyEncrypted: true,
+      },
     })
     res.json({
       success: true,
       data: {
-        smtpHost:    company?.smtpHost ?? '',
-        smtpPort:    company?.smtpPort ?? 587,
-        smtpUser:    company?.smtpUser ?? '',
-        smtpFrom:    company?.smtpFrom ?? '',
-        hasPassword: !!company?.smtpPassEncrypted,
-        configured:  !!company?.smtpHost,
+        emailProvider: company?.emailProvider ?? 'smtp',
+        smtpHost:      company?.smtpHost ?? '',
+        smtpPort:      company?.smtpPort ?? 587,
+        smtpUser:      company?.smtpUser ?? '',
+        smtpFrom:      company?.smtpFrom ?? '',
+        hasPassword:   !!company?.smtpPassEncrypted,
+        hasResendKey:  !!company?.resendApiKeyEncrypted,
+        configured:    company?.emailProvider === 'resend' ? !!company?.resendApiKeyEncrypted : !!company?.smtpHost,
       },
     })
   } catch (err) { next(err) }
 })
 
-// Update SMTP settings (credentials are encrypted at rest)
+// Update email settings (secrets are encrypted at rest)
 router.patch('/email', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dto      = UpdateSmtpSettingsSchema.parse(req.body)
     const companyId = requireCompanyId(req.user)
 
-    // Keep the existing encrypted password if the user didn't type a new
-    // one — the frontend never receives the real password back, so a
-    // blank field means "leave it alone", not "erase it".
-    const existing = dto.smtpPass
-      ? undefined
-      : await prisma.company.findUnique({ where: { id: companyId }, select: { smtpPassEncrypted: true } })
+    // Keep existing encrypted secrets if the user didn't type a new one —
+    // the frontend never receives the real secret back, so a blank field
+    // means "leave it alone", not "erase it".
+    const existing = (!dto.smtpPass || !dto.resendApiKey)
+      ? await prisma.company.findUnique({ where: { id: companyId }, select: { smtpPassEncrypted: true, resendApiKeyEncrypted: true } })
+      : undefined
 
     const company = await prisma.company.update({
       where: { id: companyId },
       data: {
-        smtpHost:          dto.smtpHost,
-        smtpPort:          dto.smtpPort,
-        smtpUser:          dto.smtpUser,
-        smtpPassEncrypted: dto.smtpPass ? encrypt(dto.smtpPass) : existing?.smtpPassEncrypted ?? null,
-        smtpFrom:          dto.smtpFrom,
+        emailProvider:         dto.emailProvider,
+        smtpHost:              dto.smtpHost ?? null,
+        smtpPort:              dto.smtpPort ?? null,
+        smtpUser:              dto.smtpUser ?? null,
+        smtpPassEncrypted:     dto.smtpPass ? encrypt(dto.smtpPass) : existing?.smtpPassEncrypted ?? null,
+        resendApiKeyEncrypted: dto.resendApiKey ? encrypt(dto.resendApiKey) : existing?.resendApiKeyEncrypted ?? null,
+        smtpFrom:              dto.smtpFrom,
       },
     })
-    res.json({ success: true, data: { smtpHost: company.smtpHost, smtpPort: company.smtpPort, smtpFrom: company.smtpFrom } })
+    res.json({ success: true, data: { emailProvider: company.emailProvider, smtpHost: company.smtpHost, smtpPort: company.smtpPort, smtpFrom: company.smtpFrom } })
   } catch (err) { next(err) }
 })
 
-// Test SMTP settings — sends a real email using either the just-submitted
-// (unsaved) form values or, if none given, the currently saved settings,
-// so "Test" reflects exactly what's on screen, before or after Save.
+// Test email settings — sends a real email using either the just-submitted
+// (unsaved) form values or, if none given, the currently saved settings.
 router.post('/email/test', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { SmtpEmailProvider, renderTemplate } = await import('../../infrastructure/email/EmailProvider')
+    const { sendEmailWithEmailConfig, verifyEmailConfig, renderTemplate } = await import('../../infrastructure/email/EmailProvider')
     const companyId = requireCompanyId(req.user)
 
     const TestSchema = z.object({
-      recipient: z.string().email(),
-      smtpHost:  z.string().optional(),
-      smtpPort:  z.coerce.number().int().min(1).max(65535).optional(),
-      smtpUser:  z.string().optional(),
-      smtpPass:  z.string().optional(),
-      smtpFrom:  z.string().email().optional(),
+      recipient:     z.string().email(),
+      emailProvider: z.enum(['smtp', 'resend']).optional(),
+      smtpHost:      z.string().optional(),
+      smtpPort:      z.coerce.number().int().min(1).max(65535).optional(),
+      smtpUser:      z.string().optional(),
+      smtpPass:      z.string().optional(),
+      resendApiKey:  z.string().optional(),
+      smtpFrom:      z.string().email().optional(),
     })
     const dto = TestSchema.parse(req.body)
-
     const company = await prisma.company.findUnique({ where: { id: companyId } })
-    const host = dto.smtpHost ?? company?.smtpHost
-    if (!host) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SMTP settings not configured — fill in the form or save settings first.' } })
+    const emailProvider = dto.emailProvider ?? company?.emailProvider ?? 'smtp'
+    const emailFrom = dto.smtpFrom ?? company?.smtpFrom ?? config.EMAIL_FROM
+
+    let cfg: import('../../infrastructure/email/EmailProvider').EmailConfig
+    if (emailProvider === 'resend') {
+      const apiKey = dto.resendApiKey ?? (company?.resendApiKeyEncrypted ? decrypt(company.resendApiKeyEncrypted) : '')
+      if (!apiKey) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Resend API key not configured — fill in the form or save settings first.' } })
+      }
+      cfg = { provider: 'resend', resend: { apiKey, emailFrom } }
+    } else {
+      const host = dto.smtpHost ?? company?.smtpHost
+      if (!host) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SMTP settings not configured — fill in the form or save settings first.' } })
+      }
+      cfg = {
+        provider: 'smtp',
+        smtp: {
+          host,
+          port:   dto.smtpPort ?? company?.smtpPort ?? 587,
+          secure: (dto.smtpPort ?? company?.smtpPort) === 465,
+          user:   dto.smtpUser ?? company?.smtpUser ?? '',
+          pass:   dto.smtpPass ?? (company?.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : ''),
+          emailFrom,
+        },
+      }
     }
 
-    const provider = new SmtpEmailProvider({
-      host,
-      port:      dto.smtpPort ?? company?.smtpPort ?? 587,
-      secure:    (dto.smtpPort ?? company?.smtpPort) === 465,
-      user:      dto.smtpUser ?? company?.smtpUser ?? '',
-      // If testing without retyping the password, fall back to whatever's
-      // already saved (same "blank = unchanged" rule as save).
-      pass:      dto.smtpPass ?? (company?.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : ''),
-      emailFrom: dto.smtpFrom ?? company?.smtpFrom ?? config.EMAIL_FROM,
-    })
-
-    const ok = await provider.verify()
+    const ok = await verifyEmailConfig(cfg)
     if (!ok) {
-      return res.json({ success: false, error: 'Could not verify connection to the SMTP server. Check host, port, and credentials.' })
+      const hint = emailProvider === 'smtp'
+        ? "Could not verify connection to the SMTP server. Check host, port, and credentials — note some hosts (like Render's free plan) block outbound SMTP ports entirely, in which case switch to the Resend (HTTP API) option above."
+        : 'Could not authenticate with Resend. Check your API key.'
+      return res.json({ success: false, error: hint })
     }
 
-    await provider.send({
+    await sendEmailWithEmailConfig(cfg, {
       to:      dto.recipient,
-      subject: `${company?.name ?? 'CRM'} — SMTP test`,
-      html:    renderTemplate('smtp-test', { emailFrom: dto.smtpFrom ?? company?.smtpFrom ?? config.EMAIL_FROM, host }),
+      subject: `${company?.name ?? 'CRM'} — email test`,
+      html:    renderTemplate('smtp-test', { emailFrom, host: emailProvider === 'resend' ? 'Resend API' : (dto.smtpHost ?? company?.smtpHost) }),
     })
     res.json({ success: true, data: { connected: true } })
   } catch (err) { next(err) }

@@ -3,7 +3,7 @@ import { config }      from '../../config/env'
 import { log }         from '../../config/logger'
 import { prisma }      from '../database/prisma'
 import { decrypt }     from '../../core/utils/index'
-import { sendEmailWithConfig, renderTemplate, type SmtpConfig } from '../email/EmailProvider'
+import { sendEmailWithEmailConfig, renderTemplate, type EmailConfig } from '../email/EmailProvider'
 import { notificationsService } from '../../modules/notifications/notifications.service'
 import type { EmailJobData, NotificationJobData } from './queues'
 
@@ -42,49 +42,73 @@ export function startWorkers() {
   // other over which SMTP config is "currently active" — see
   // sendEmailWithConfig in EmailProvider.ts for the concurrency-safe
   // send path this feeds into.
-  function envFallbackConfig(): SmtpConfig {
+  function envFallbackConfig(): EmailConfig {
     return {
-      host:      config.SMTP_HOST ?? 'localhost',
-      port:      config.SMTP_PORT ?? 587,
-      secure:    config.SMTP_PORT === 465,
-      user:      config.SMTP_USER ?? '',
-      pass:      config.SMTP_PASS ?? '',
-      emailFrom: config.EMAIL_FROM,
+      provider: 'smtp',
+      smtp: {
+        host:      config.SMTP_HOST ?? 'localhost',
+        port:      config.SMTP_PORT ?? 587,
+        secure:    config.SMTP_PORT === 465,
+        user:      config.SMTP_USER ?? '',
+        pass:      config.SMTP_PASS ?? '',
+        emailFrom: config.EMAIL_FROM,
+      },
     }
   }
 
-  async function resolveSmtpConfig(companyId?: string): Promise<SmtpConfig> {
+  async function resolveEmailConfig(companyId?: string): Promise<EmailConfig> {
     try {
       if (companyId) {
         const company = await prisma.company.findUnique({
           where:  { id: companyId },
-          select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPassEncrypted: true, smtpFrom: true },
+          select: {
+            emailProvider: true, resendApiKeyEncrypted: true, smtpFrom: true,
+            smtpHost: true, smtpPort: true, smtpUser: true, smtpPassEncrypted: true,
+          },
         })
+        if (company?.emailProvider === 'resend' && company.resendApiKeyEncrypted) {
+          return {
+            provider: 'resend',
+            resend: { apiKey: decrypt(company.resendApiKeyEncrypted), emailFrom: company.smtpFrom ?? config.EMAIL_FROM },
+          }
+        }
         if (company?.smtpHost) {
           return {
-            host:      company.smtpHost,
-            port:      company.smtpPort ?? 587,
-            secure:    company.smtpPort === 465,
-            user:      company.smtpUser ?? '',
-            pass:      company.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : '',
-            emailFrom: company.smtpFrom ?? config.EMAIL_FROM,
+            provider: 'smtp',
+            smtp: {
+              host:      company.smtpHost,
+              port:      company.smtpPort ?? 587,
+              secure:    company.smtpPort === 465,
+              user:      company.smtpUser ?? '',
+              pass:      company.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : '',
+              emailFrom: company.smtpFrom ?? config.EMAIL_FROM,
+            },
           }
         }
       }
 
       const globalRow = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
+      if (globalRow?.emailProvider === 'resend' && globalRow.resendApiKeyEncrypted) {
+        return {
+          provider: 'resend',
+          resend: { apiKey: decrypt(globalRow.resendApiKeyEncrypted), emailFrom: globalRow.emailFrom ?? config.EMAIL_FROM },
+        }
+      }
       if (globalRow?.smtpHost) {
         return {
-          host:      globalRow.smtpHost,
-          port:      globalRow.smtpPort ?? 587,
-          secure:    globalRow.smtpSecure,
-          user:      globalRow.smtpUser ?? '',
-          pass:      globalRow.smtpPassEncrypted ? decrypt(globalRow.smtpPassEncrypted) : '',
-          emailFrom: globalRow.emailFrom ?? config.EMAIL_FROM,
+          provider: 'smtp',
+          smtp: {
+            host:      globalRow.smtpHost,
+            port:      globalRow.smtpPort ?? 587,
+            secure:    globalRow.smtpSecure,
+            user:      globalRow.smtpUser ?? '',
+            pass:      globalRow.smtpPassEncrypted ? decrypt(globalRow.smtpPassEncrypted) : '',
+            emailFrom: globalRow.emailFrom ?? config.EMAIL_FROM,
+          },
         }
       }
     } catch (err) {
-      log.error('Failed to resolve SMTP config from database, falling back to env vars', { err: String(err) })
+      log.error('Failed to resolve email config from database, falling back to env vars', { err: String(err) })
     }
     return envFallbackConfig()
   }
@@ -92,9 +116,9 @@ export function startWorkers() {
   const emailWorker = new Worker<EmailJobData>(
     'email',
     async (job: Job<EmailJobData>) => {
-      const cfg  = await resolveSmtpConfig(job.data.companyId)
+      const cfg  = await resolveEmailConfig(job.data.companyId)
       const html = renderTemplate(job.data.template, job.data.context)
-      await sendEmailWithConfig(cfg, {
+      await sendEmailWithEmailConfig(cfg, {
         to:      job.data.to,
         subject: job.data.subject,
         html,

@@ -179,3 +179,80 @@ export class SmtpEmailProvider implements EmailProvider {
 }
 
 export const defaultEmailProvider = new SmtpEmailProvider()
+
+// ── Resend (HTTPS API — no SMTP ports involved) ───────────────
+//
+// Render's free web-service plan blocks outbound traffic on SMTP ports
+// 25/465/587 entirely (network-level, not something app code can work
+// around). Resend's API is a plain HTTPS POST on port 443, so it isn't
+// affected — this is the recommended path for anyone on a free Render
+// plan who needs outbound email to actually work.
+
+export interface ResendConfig {
+  apiKey:    string
+  emailFrom: string
+}
+
+const RESEND_API_URL = 'https://api.resend.com'
+
+export async function sendEmailWithResend(cfg: ResendConfig, opts: SendEmailOpts): Promise<void> {
+  const res = await fetch(`${RESEND_API_URL}/emails`, {
+    method:  'POST',
+    headers: {
+      'Authorization': `Bearer ${cfg.apiKey}`,
+      'Content-Type':  'application/json',
+    },
+    body: JSON.stringify({
+      from:     opts.from ?? cfg.emailFrom,
+      to:       Array.isArray(opts.to) ? opts.to : [opts.to],
+      subject:  opts.subject,
+      html:     opts.html,
+      text:     opts.text,
+      reply_to: opts.replyTo,
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    log.error('Failed to send email via Resend', { status: res.status, body, to: String(opts.to) })
+    throw new Error(`Resend API error (${res.status}): ${body || res.statusText}`)
+  }
+  log.info('Email sent via Resend', { to: String(opts.to), subject: opts.subject })
+}
+
+/** Lightweight key check — confirms the API key authenticates, without sending anything. */
+export async function verifyResendConfig(cfg: ResendConfig): Promise<boolean> {
+  try {
+    const res = await fetch(`${RESEND_API_URL}/domains`, {
+      headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ── Provider-agnostic dispatch ─────────────────────────────────
+//
+// A single shape callers (the email worker, settings "test" endpoints)
+// can resolve once and pass around, without needing their own
+// if/else branching on which provider is active.
+
+export type EmailConfig =
+  | { provider: 'smtp';   smtp:   SmtpConfig }
+  | { provider: 'resend'; resend: ResendConfig }
+
+export async function sendEmailWithEmailConfig(cfg: EmailConfig, opts: SendEmailOpts): Promise<void> {
+  if (cfg.provider === 'resend') return sendEmailWithResend(cfg.resend, opts)
+  return sendEmailWithConfig(cfg.smtp, opts)
+}
+
+export async function verifyEmailConfig(cfg: EmailConfig): Promise<boolean> {
+  if (cfg.provider === 'resend') return verifyResendConfig(cfg.resend)
+  try {
+    await getCachedTransporter(cfg.smtp).verify()
+    return true
+  } catch {
+    return false
+  }
+}

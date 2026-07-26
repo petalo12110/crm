@@ -27,10 +27,12 @@ export const adminApi = {
 }
 
 export interface SmtpSettingsInput {
-  host:      string
-  port:      number
-  secure:    boolean
-  user?:     string
-  pass?:     string
+  emailProvider: 'smtp' | 'resend'
+  host?:      string
+  port?:      number
+  secure:     boolean
+  user?:      string
+  pass?:      string
+  resendApiKey?: string
   emailFrom: string
 }

@@ -544,6 +544,7 @@ function CustomerPortalCard({ slug }: { slug: string }) {
 function EmailTab() {
   const qc = useQueryClient()
   const [showPass, setShowPass] = useState(false)
+  const [showKey, setShowKey] = useState(false)
   const [testEmail, setTestEmail] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -553,10 +554,13 @@ function EmailTab() {
 
   const { register, handleSubmit, watch, setValue, formState: { isDirty } } = useForm({
     values: data ? {
+      emailProvider: data.emailProvider ?? 'smtp',
       smtpHost: data.smtpHost ?? '', smtpPort: data.smtpPort ?? 587,
-      smtpUser: data.smtpUser ?? '', smtpPass: '', smtpFrom: data.smtpFrom ?? '',
+      smtpUser: data.smtpUser ?? '', smtpPass: '', resendApiKey: '', smtpFrom: data.smtpFrom ?? '',
     } : undefined,
   })
+
+  const provider = watch('emailProvider')
 
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch('/settings/email', body),
@@ -581,7 +585,7 @@ function EmailTab() {
           <div className="flex items-center gap-2">
             <Mail className="h-4 w-4 text-text-secondary" />
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">SMTP Configuration</h3>
+              <h3 className="text-sm font-semibold text-text-primary">Email Configuration</h3>
               <p className="text-xs text-text-secondary">Used for password resets, notifications, and system emails</p>
             </div>
           </div>
@@ -594,63 +598,102 @@ function EmailTab() {
         {!data?.configured && (
           <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>No SMTP configured yet — password resets and employee invite emails won't send until this is set up.</span>
+            <span>Not configured yet — password resets and employee invite emails won't send until this is set up.</span>
           </div>
         )}
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
-          <div className="flex flex-wrap gap-1.5">
-            {SMTP_PROVIDER_PRESETS.map(p => {
-              const isActive = p.host !== '' && watch('smtpHost') === p.host
-              return (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => applyPreset(p.host, p.port)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
-                    ${isActive
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border-strong text-text-secondary hover:border-primary hover:text-primary'}`}
-                >
-                  {p.label}
-                </button>
-              )
-            })}
-          </div>
+        <div className="flex rounded-lg border border-border p-1">
+          <button type="button"
+            onClick={() => setValue('emailProvider', 'smtp', { shouldDirty: true })}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors
+              ${provider === 'smtp' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            SMTP
+          </button>
+          <button type="button"
+            onClick={() => setValue('emailProvider', 'resend', { shouldDirty: true })}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors
+              ${provider === 'resend' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            Resend (HTTP API)
+          </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
-            <Input label="SMTP Host" placeholder="smtp.sendgrid.net" {...register('smtpHost')} />
-          </div>
-          <Input label="Port" type="number" placeholder="587" {...register('smtpPort')} />
-        </div>
+        {provider === 'resend' && (
+          <p className="text-xs text-text-secondary">
+            Sends over a plain HTTPS request instead of an SMTP connection — recommended if your host blocks outbound
+            SMTP ports (common on free-tier plans). Get an API key from{' '}
+            <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-primary hover:underline">resend.com/api-keys</a>.
+          </p>
+        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Username / API Key" {...register('smtpUser')} />
+        {provider === 'smtp' && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SMTP_PROVIDER_PRESETS.map(p => {
+                const isActive = p.host !== '' && watch('smtpHost') === p.host
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => applyPreset(p.host, p.port)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
+                      ${isActive
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border-strong text-text-secondary hover:border-primary hover:text-primary'}`}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {provider === 'resend' ? (
           <div className="relative">
-            <Input label="Password" type={showPass ? 'text' : 'password'}
-              placeholder={data?.hasPassword ? 'Saved — leave blank to keep it' : '••••••••'}
-              {...register('smtpPass')} />
-            <button type="button" onClick={() => setShowPass(s => !s)}
+            <Input label="API Key" type={showKey ? 'text' : 'password'}
+              placeholder={data?.hasResendKey ? 'Saved — leave blank to keep it' : 're_...'}
+              {...register('resendApiKey')} />
+            <button type="button" onClick={() => setShowKey(s => !s)}
               className="absolute right-3 top-[34px] text-text-muted hover:text-text-secondary">
-              {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Input label="SMTP Host" placeholder="smtp.sendgrid.net" {...register('smtpHost')} />
+              </div>
+              <Input label="Port" type="number" placeholder="587" {...register('smtpPort')} />
+            </div>
 
-        {watch('smtpHost') === 'smtp.gmail.com' && (
-          <p className="text-xs text-text-secondary">
-            Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"
-              className="text-primary hover:underline">App Password</a> — your regular Gmail password won't work here (Google blocks plain SMTP logins).
-          </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Username / API Key" {...register('smtpUser')} />
+              <div className="relative">
+                <Input label="Password" type={showPass ? 'text' : 'password'}
+                  placeholder={data?.hasPassword ? 'Saved — leave blank to keep it' : '••••••••'}
+                  {...register('smtpPass')} />
+                <button type="button" onClick={() => setShowPass(s => !s)}
+                  className="absolute right-3 top-[34px] text-text-muted hover:text-text-secondary">
+                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            {watch('smtpHost') === 'smtp.gmail.com' && (
+              <p className="text-xs text-text-secondary">
+                Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"
+                  className="text-primary hover:underline">App Password</a> — your regular Gmail password won't work here (Google blocks plain SMTP logins).
+              </p>
+            )}
+          </>
         )}
 
         <Input label="From address" placeholder="noreply@yourcompany.com" {...register('smtpFrom')} />
 
         <div className="flex flex-wrap items-end gap-3 pt-1">
-          <Button type="submit" loading={mutation.isPending} disabled={!isDirty}>Save SMTP</Button>
+          <Button type="submit" loading={mutation.isPending} disabled={!isDirty}>Save</Button>
           <div className="flex items-end gap-2">
             <Input label="Send test to" type="email" placeholder="you@example.com" value={testEmail}
               onChange={e => setTestEmail(e.target.value)} className="w-56" />
@@ -666,7 +709,7 @@ function EmailTab() {
           {testMutation.isSuccess && (
             testMutation.data?.data?.success
               ? <p className="text-sm text-success">Test email sent — check {testEmail}.</p>
-              : <p className="text-sm text-danger">{testMutation.data?.data?.error ?? 'Test failed — check your SMTP credentials.'}</p>
+              : <p className="text-sm text-danger">{testMutation.data?.data?.error ?? 'Test failed — check your credentials.'}</p>
           )}
           {testMutation.isError && <p className="text-sm text-danger">Request failed — check the API is reachable.</p>}
         </div>

@@ -337,6 +337,7 @@ function CreateCompanyForm({ onSubmit, onCancel, loading, error }: {
 function SmtpTab() {
   const qc = useQueryClient()
   const [showPass, setShowPass] = useState(false)
+  const [showKey, setShowKey] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null)
 
@@ -347,10 +348,13 @@ function SmtpTab() {
 
   const { register, handleSubmit, watch, setValue, formState: { isDirty } } = useForm<SmtpSettingsInput>({
     values: data ? {
+      emailProvider: data.emailProvider ?? 'smtp',
       host: data.host ?? '', port: data.port ?? 587, secure: data.secure ?? false,
-      user: data.user ?? '', pass: '', emailFrom: data.emailFrom ?? '',
+      user: data.user ?? '', pass: '', resendApiKey: '', emailFrom: data.emailFrom ?? '',
     } : undefined,
   })
+
+  const provider = watch('emailProvider')
 
   const saveMutation = useMutation({
     mutationFn: (body: SmtpSettingsInput) => adminApi.updateSmtpSettings(body),
@@ -364,7 +368,7 @@ function SmtpTab() {
   })
 
   if (isLoading) return <LoadingState />
-  if (isError) return <ErrorState message="Couldn't load SMTP settings." onRetry={refetch} />
+  if (isError) return <ErrorState message="Couldn't load email settings." onRetry={refetch} />
 
   const applyPreset = (host: string, port: number, secure: boolean) => {
     setValue('host', host, { shouldDirty: true })
@@ -377,79 +381,126 @@ function SmtpTab() {
       {!data.configured && (
         <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>No SMTP configured yet — the platform falls back to whatever <code className="text-xs">SMTP_HOST</code> is set to in the environment (Mailpit in local dev). Save settings below to override it, without restarting anything.</span>
+          <span>No email provider configured yet — the platform falls back to whatever <code className="text-xs">SMTP_HOST</code> is set to in the environment (Mailpit in local dev). Save settings below to override it, without restarting anything.</span>
         </div>
       )}
 
       <form onSubmit={handleSubmit(body => { saveMutation.mutate(body); setTestResult(null) })} className="space-y-4 rounded-lg border border-border bg-surface p-5">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text-primary">SMTP configuration</h3>
+          <h3 className="text-sm font-semibold text-text-primary">Email configuration</h3>
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium
             ${data.configured ? 'bg-success/10 text-success' : 'bg-surface-3 text-text-muted'}`}>
             {data.configured ? 'Configured' : 'Not configured'}
           </span>
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
-          <div className="flex flex-wrap gap-1.5">
-            {SMTP_PROVIDER_PRESETS.map(p => {
-              const isActive = p.host !== '' && watch('host') === p.host
-              return (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => applyPreset(p.host, p.port, p.secure)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
-                    ${isActive
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border-strong text-text-secondary hover:border-primary hover:text-primary'}`}
-                >
-                  {p.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t border-border pt-4 space-y-4">
-
-        <Input label="SMTP host" placeholder="smtp.gmail.com" {...register('host', { required: true })} />
-
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Port" type="number" {...register('port', { required: true, valueAsNumber: true })} />
-          <Select label="Encryption" {...register('secure', {
-            setValueAs: v => v === 'true',
-          })}>
-            <option value="false">STARTTLS (587) — most providers</option>
-            <option value="true">SSL/TLS (465)</option>
-          </Select>
-        </div>
-
-        <Input label="Username" placeholder="you@gmail.com" autoComplete="off" {...register('user')} />
-
-        <div className="relative">
-          <Input
-            label="Password"
-            type={showPass ? 'text' : 'password'}
-            placeholder={data.hasPassword ? 'Saved — leave blank to keep it' : 'App password or SMTP password'}
-            autoComplete="new-password"
-            {...register('pass')}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPass(s => !s)}
-            className="absolute right-2.5 top-[30px] text-text-muted hover:text-text-primary"
-            tabIndex={-1}
-          >
-            {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        <div className="flex rounded-lg border border-border p-1">
+          <button type="button"
+            onClick={() => setValue('emailProvider', 'smtp', { shouldDirty: true })}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors
+              ${provider === 'smtp' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            SMTP
+          </button>
+          <button type="button"
+            onClick={() => setValue('emailProvider', 'resend', { shouldDirty: true })}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors
+              ${provider === 'resend' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            Resend (HTTP API)
           </button>
         </div>
 
-        {watch('host')?.includes('gmail') && (
-          <p className="text-xs text-text-muted">
-            Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-primary hover:underline">App Password</a> — your regular Gmail password won't work here (Google blocks plain SMTP logins).
+        {provider === 'resend' && (
+          <p className="text-xs text-text-secondary">
+            Sends over a plain HTTPS request instead of an SMTP connection — recommended if you're on Render's free plan,
+            which <a href="https://render.com/docs/free#free-web-services" target="_blank" rel="noreferrer" className="text-primary hover:underline">blocks outbound SMTP ports (25/465/587)</a> entirely.
+            Get an API key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-primary hover:underline">resend.com/api-keys</a>.
           </p>
+        )}
+
+        {provider === 'smtp' && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SMTP_PROVIDER_PRESETS.map(p => {
+                const isActive = p.host !== '' && watch('host') === p.host
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => applyPreset(p.host, p.port, p.secure)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
+                      ${isActive
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border-strong text-text-secondary hover:border-primary hover:text-primary'}`}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-border pt-4 space-y-4">
+
+        {provider === 'resend' ? (
+          <div className="relative">
+            <Input
+              label="API Key"
+              type={showKey ? 'text' : 'password'}
+              placeholder={data.hasResendKey ? 'Saved — leave blank to keep it' : 're_...'}
+              autoComplete="off"
+              {...register('resendApiKey')}
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(s => !s)}
+              className="absolute right-2.5 top-[30px] text-text-muted hover:text-text-primary"
+              tabIndex={-1}
+            >
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        ) : (
+          <>
+            <Input label="SMTP host" placeholder="smtp.gmail.com" {...register('host', { required: true })} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Port" type="number" {...register('port', { required: true, valueAsNumber: true })} />
+              <Select label="Encryption" {...register('secure', {
+                setValueAs: v => v === 'true',
+              })}>
+                <option value="false">STARTTLS (587) — most providers</option>
+                <option value="true">SSL/TLS (465)</option>
+              </Select>
+            </div>
+
+            <Input label="Username" placeholder="you@gmail.com" autoComplete="off" {...register('user')} />
+
+            <div className="relative">
+              <Input
+                label="Password"
+                type={showPass ? 'text' : 'password'}
+                placeholder={data.hasPassword ? 'Saved — leave blank to keep it' : 'App password or SMTP password'}
+                autoComplete="new-password"
+                {...register('pass')}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(s => !s)}
+                className="absolute right-2.5 top-[30px] text-text-muted hover:text-text-primary"
+                tabIndex={-1}
+              >
+                {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+
+            {watch('host')?.includes('gmail') && (
+              <p className="text-xs text-text-muted">
+                Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-primary hover:underline">App Password</a> — your regular Gmail password won't work here (Google blocks plain SMTP logins).
+              </p>
+            )}
+          </>
         )}
 
         <Input label="From address" placeholder="noreply@yourcompany.com" type="email" {...register('emailFrom', { required: true })} />

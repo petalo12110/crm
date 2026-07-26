@@ -144,16 +144,21 @@ export const UpdateCompanySettingsSchema = z.object({
 export type UpdateCompanySettingsInput = z.infer<typeof UpdateCompanySettingsSchema>
 
 export const UpdateSmtpSettingsSchema = z.object({
-  smtpHost: z.string().min(1).max(255),
-  smtpPort: z.coerce.number().int().min(1).max(65535),
-  smtpUser: z.string().min(1).max(255),
-  // Optional — omitting it means "keep the currently-saved password",
-  // matching the platform-level admin SMTP settings behavior. The
-  // frontend never receives the real password back, so a blank field
-  // must not be treated as "erase it".
+  emailProvider: z.enum(['smtp', 'resend']).default('smtp'),
+  smtpHost: z.string().max(255).optional(),
+  smtpPort: z.coerce.number().int().min(1).max(65535).optional(),
+  smtpUser: z.string().max(255).optional(),
+  // Optional — omitting it means "keep the currently-saved value" (for
+  // both smtpPass and resendApiKey), matching the platform-level admin
+  // settings behavior. The frontend never receives the real secret back,
+  // so a blank field must not be treated as "erase it".
   smtpPass: z.string().min(1).optional(),
+  resendApiKey: z.string().min(1).optional(),
   smtpFrom: z.string().email(),
-})
+}).refine(
+  dto => dto.emailProvider !== 'smtp' || (!!dto.smtpHost && !!dto.smtpPort && !!dto.smtpUser),
+  { message: 'SMTP host, port, and username are required when using the SMTP provider.', path: ['smtpHost'] }
+)
 export type UpdateSmtpSettingsInput = z.infer<typeof UpdateSmtpSettingsSchema>
 
 // ── Pagination ─────────────────────────────────────────────
