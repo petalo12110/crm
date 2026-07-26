@@ -268,7 +268,7 @@ native file edits needed, it takes effect after `pnpm cap:sync` and a
 rebuild.
 
 **One thing I want to flag rather than guess at:** the *large* gap below
-the status bar in your screenshot (between it and the "CRM Platform"
+the status bar in your screenshot (between it and the "TrustLoop"
 logo) is almost certainly the login card being intentionally centered
 vertically on the screen (`AuthLayout.tsx` — same as most login pages).
 That's normal, not a bug. If you still want that tightened up after

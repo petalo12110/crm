@@ -99,7 +99,7 @@ export function Sidebar() {
     <>
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-sm font-bold text-white">C</div>
-        <span className="font-semibold text-text-primary">CRM Platform</span>
+        <span className="font-semibold text-text-primary">TrustLoop</span>
       </div>
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
         <NavSection title="Main"     items={MAIN_NAV}     onNavigate={onNavigate} />

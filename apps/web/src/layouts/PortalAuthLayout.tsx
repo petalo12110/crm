@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { usePortalAuth } from '@/context/PortalAuthContext'
 
 /**
- * Shows the company's own name rather than "CRM Platform" branding —
+ * Shows the company's own name rather than "TrustLoop" branding —
  * customers are visiting *their* vendor's support portal, they shouldn't
  * see the name of the software vendor behind it.
  */

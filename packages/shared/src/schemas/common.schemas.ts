@@ -147,7 +147,11 @@ export const UpdateSmtpSettingsSchema = z.object({
   smtpHost: z.string().min(1).max(255),
   smtpPort: z.coerce.number().int().min(1).max(65535),
   smtpUser: z.string().min(1).max(255),
-  smtpPass: z.string().min(1),
+  // Optional — omitting it means "keep the currently-saved password",
+  // matching the platform-level admin SMTP settings behavior. The
+  // frontend never receives the real password back, so a blank field
+  // must not be treated as "erase it".
+  smtpPass: z.string().min(1).optional(),
   smtpFrom: z.string().email(),
 })
 export type UpdateSmtpSettingsInput = z.infer<typeof UpdateSmtpSettingsSchema>

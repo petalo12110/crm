@@ -14,7 +14,7 @@ export function AdminAuthLayout() {
         <div className="mb-8 flex items-center justify-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded bg-text-primary text-lg font-bold text-surface">C</div>
           <div>
-            <p className="text-sm font-semibold leading-tight text-text-primary">CRM Platform</p>
+            <p className="text-sm font-semibold leading-tight text-text-primary">TrustLoop</p>
             <p className="flex items-center gap-1 text-xs font-medium leading-tight text-text-muted">
               <ShieldCheck className="h-3 w-3" /> Super Admin
             </p>

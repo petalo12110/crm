@@ -54,17 +54,47 @@ router.patch('/', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request
   } catch (err) { next(err) }
 })
 
+// Get SMTP settings (password never returned — only whether one is set)
+router.get('/email', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const company = await prisma.company.findFirst({
+      where:  { id: requireCompanyId(req.user), deletedAt: null },
+      select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpFrom: true, smtpPassEncrypted: true },
+    })
+    res.json({
+      success: true,
+      data: {
+        smtpHost:    company?.smtpHost ?? '',
+        smtpPort:    company?.smtpPort ?? 587,
+        smtpUser:    company?.smtpUser ?? '',
+        smtpFrom:    company?.smtpFrom ?? '',
+        hasPassword: !!company?.smtpPassEncrypted,
+        configured:  !!company?.smtpHost,
+      },
+    })
+  } catch (err) { next(err) }
+})
+
 // Update SMTP settings (credentials are encrypted at rest)
 router.patch('/email', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const dto     = UpdateSmtpSettingsSchema.parse(req.body)
+    const dto      = UpdateSmtpSettingsSchema.parse(req.body)
+    const companyId = requireCompanyId(req.user)
+
+    // Keep the existing encrypted password if the user didn't type a new
+    // one — the frontend never receives the real password back, so a
+    // blank field means "leave it alone", not "erase it".
+    const existing = dto.smtpPass
+      ? undefined
+      : await prisma.company.findUnique({ where: { id: companyId }, select: { smtpPassEncrypted: true } })
+
     const company = await prisma.company.update({
-      where: { id: requireCompanyId(req.user) },
+      where: { id: companyId },
       data: {
         smtpHost:          dto.smtpHost,
         smtpPort:          dto.smtpPort,
         smtpUser:          dto.smtpUser,
-        smtpPassEncrypted: encrypt(dto.smtpPass),
+        smtpPassEncrypted: dto.smtpPass ? encrypt(dto.smtpPass) : existing?.smtpPassEncrypted ?? null,
         smtpFrom:          dto.smtpFrom,
       },
     })
@@ -72,24 +102,52 @@ router.patch('/email', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Re
   } catch (err) { next(err) }
 })
 
-// Test SMTP settings
+// Test SMTP settings — sends a real email using either the just-submitted
+// (unsaved) form values or, if none given, the currently saved settings,
+// so "Test" reflects exactly what's on screen, before or after Save.
 router.post('/email/test', authenticate, authorize(ROLES.OWNER_ONLY), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { SmtpEmailProvider } = await import('../../infrastructure/email/EmailProvider')
-    const company = await prisma.company.findUnique({ where: { id: requireCompanyId(req.user) } })
-    if (!company?.smtpHost) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SMTP settings not configured' } })
-    }
-    const provider = new SmtpEmailProvider({
-      host:      company.smtpHost,
-      port:      company.smtpPort ?? 587,
-      secure:    company.smtpPort === 465,
-      user:      company.smtpUser ?? '',
-      pass:      company.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : '',
-      emailFrom: company.smtpFrom ?? config.EMAIL_FROM,
+    const { SmtpEmailProvider, renderTemplate } = await import('../../infrastructure/email/EmailProvider')
+    const companyId = requireCompanyId(req.user)
+
+    const TestSchema = z.object({
+      recipient: z.string().email(),
+      smtpHost:  z.string().optional(),
+      smtpPort:  z.coerce.number().int().min(1).max(65535).optional(),
+      smtpUser:  z.string().optional(),
+      smtpPass:  z.string().optional(),
+      smtpFrom:  z.string().email().optional(),
     })
+    const dto = TestSchema.parse(req.body)
+
+    const company = await prisma.company.findUnique({ where: { id: companyId } })
+    const host = dto.smtpHost ?? company?.smtpHost
+    if (!host) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'SMTP settings not configured — fill in the form or save settings first.' } })
+    }
+
+    const provider = new SmtpEmailProvider({
+      host,
+      port:      dto.smtpPort ?? company?.smtpPort ?? 587,
+      secure:    (dto.smtpPort ?? company?.smtpPort) === 465,
+      user:      dto.smtpUser ?? company?.smtpUser ?? '',
+      // If testing without retyping the password, fall back to whatever's
+      // already saved (same "blank = unchanged" rule as save).
+      pass:      dto.smtpPass ?? (company?.smtpPassEncrypted ? decrypt(company.smtpPassEncrypted) : ''),
+      emailFrom: dto.smtpFrom ?? company?.smtpFrom ?? config.EMAIL_FROM,
+    })
+
     const ok = await provider.verify()
-    res.json({ success: true, data: { connected: ok } })
+    if (!ok) {
+      return res.json({ success: false, error: 'Could not verify connection to the SMTP server. Check host, port, and credentials.' })
+    }
+
+    await provider.send({
+      to:      dto.recipient,
+      subject: `${company?.name ?? 'CRM'} — SMTP test`,
+      html:    renderTemplate('smtp-test', { emailFrom: dto.smtpFrom ?? company?.smtpFrom ?? config.EMAIL_FROM, host }),
+    })
+    res.json({ success: true, data: { connected: true } })
   } catch (err) { next(err) }
 })
 

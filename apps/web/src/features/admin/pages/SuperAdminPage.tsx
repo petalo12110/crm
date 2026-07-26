@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Overlay'
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States'
 import { formatDate } from '@/lib/formatters'
+import { SMTP_PROVIDER_PRESETS } from '@/lib/smtpPresets'
 import { adminApi, SmtpSettingsInput } from '../api/admin.api'
 
 type Tab = 'companies' | 'email'
@@ -333,15 +334,6 @@ function CreateCompanyForm({ onSubmit, onCancel, loading, error }: {
 // TAB: Email (SMTP)
 // ─────────────────────────────────────────────────────────────
 
-const PROVIDER_PRESETS = [
-  { label: 'Custom / other',          host: '',                port: 587, secure: false },
-  { label: 'Mailpit (local dev)',     host: 'localhost',        port: 1025, secure: false },
-  { label: 'Gmail',                   host: 'smtp.gmail.com',   port: 587, secure: false },
-  { label: 'SendGrid',                host: 'smtp.sendgrid.net',port: 587, secure: false },
-  { label: 'Mailgun',                 host: 'smtp.mailgun.org', port: 587, secure: false },
-  { label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587, secure: false },
-]
-
 function SmtpTab() {
   const qc = useQueryClient()
   const [showPass, setShowPass] = useState(false)
@@ -401,7 +393,7 @@ function SmtpTab() {
         <div>
           <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
           <div className="flex flex-wrap gap-1.5">
-            {PROVIDER_PRESETS.map(p => {
+            {SMTP_PROVIDER_PRESETS.map(p => {
               const isActive = p.host !== '' && watch('host') === p.host
               return (
                 <button

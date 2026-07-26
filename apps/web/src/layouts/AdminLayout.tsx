@@ -19,7 +19,7 @@ export function AdminLayout() {
         <Link to="/admin" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded bg-text-primary text-sm font-bold text-surface">C</div>
           <div>
-            <p className="text-sm font-semibold leading-tight text-text-primary">CRM Platform</p>
+            <p className="text-sm font-semibold leading-tight text-text-primary">TrustLoop</p>
             <p className="flex items-center gap-1 text-xs font-medium leading-tight text-text-muted">
               <ShieldCheck className="h-3 w-3" /> Super Admin
             </p>

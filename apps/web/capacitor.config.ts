@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.crmplatform.app',
-  appName: 'CRM Platform',
+  appName: 'TrustLoop',
   webDir: 'dist',
   server: {
     // Allows plain http:// traffic to your LAN API server (Android 9+

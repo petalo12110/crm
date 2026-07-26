@@ -10,11 +10,12 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/FormControls'
 import { Avatar } from '@/components/ui/Badge'
 import { LoadingState } from '@/components/ui/States'
+import { SMTP_PROVIDER_PRESETS } from '@/lib/smtpPresets'
 import {
   User, Lock, Bell, Building2, Mail, Download,
   Shield, Trash2, LogOut, CheckCircle2, AlertCircle,
   Smartphone, Globe, Clock, ChevronRight,
-  MessageCircle, Github, Link2, Users,
+  MessageCircle, Github, Link2, Users, Eye, EyeOff,
 } from 'lucide-react'
 
 // ── Shared save feedback ──────────────────────────────────────
@@ -541,24 +542,81 @@ function CustomerPortalCard({ slug }: { slug: string }) {
 // ─────────────────────────────────────────────────────────────
 
 function EmailTab() {
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.patch('/settings/email', body),
-  })
-  const testMutation = useMutation({
-    mutationFn: () => api.post('/settings/email/test'),
+  const qc = useQueryClient()
+  const [showPass, setShowPass] = useState(false)
+  const [testEmail, setTestEmail] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['settings', 'email'],
+    queryFn:  () => api.get('/settings/email').then(r => r.data.data),
   })
 
-  const { register, handleSubmit } = useForm()
+  const { register, handleSubmit, watch, setValue, formState: { isDirty } } = useForm({
+    values: data ? {
+      smtpHost: data.smtpHost ?? '', smtpPort: data.smtpPort ?? 587,
+      smtpUser: data.smtpUser ?? '', smtpPass: '', smtpFrom: data.smtpFrom ?? '',
+    } : undefined,
+  })
+
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch('/settings/email', body),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['settings', 'email'] }),
+  })
+  const testMutation = useMutation({
+    mutationFn: () => api.post('/settings/email/test', { recipient: testEmail, ...watch() }),
+  })
+
+  const applyPreset = (host: string, port: number) => {
+    setValue('smtpHost', host, { shouldDirty: true })
+    setValue('smtpPort', port, { shouldDirty: true })
+  }
+
+  if (isLoading) return <LoadingState />
 
   return (
     <div className="space-y-6 max-w-2xl">
       <form onSubmit={handleSubmit(v => mutation.mutate(v as Record<string, unknown>))}
         className="rounded-lg border border-border bg-surface p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Mail className="h-4 w-4 text-text-secondary" />
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary">SMTP Configuration</h3>
-            <p className="text-xs text-text-secondary">Used for password resets, notifications, and system emails</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-text-secondary" />
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">SMTP Configuration</h3>
+              <p className="text-xs text-text-secondary">Used for password resets, notifications, and system emails</p>
+            </div>
+          </div>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium
+            ${data?.configured ? 'bg-success/10 text-success' : 'bg-surface-3 text-text-muted'}`}>
+            {data?.configured ? 'Configured' : 'Not configured'}
+          </span>
+        </div>
+
+        {!data?.configured && (
+          <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>No SMTP configured yet — password resets and employee invite emails won't send until this is set up.</span>
+          </div>
+        )}
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-text-primary">Quick setup</label>
+          <div className="flex flex-wrap gap-1.5">
+            {SMTP_PROVIDER_PRESETS.map(p => {
+              const isActive = p.host !== '' && watch('smtpHost') === p.host
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p.host, p.port)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors
+                    ${isActive
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border-strong text-text-secondary hover:border-primary hover:text-primary'}`}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -571,29 +629,46 @@ function EmailTab() {
 
         <div className="grid grid-cols-2 gap-3">
           <Input label="Username / API Key" {...register('smtpUser')} />
-          <Input label="Password" type="password" placeholder="••••••••"
-            {...(register as (name: string) => object)('smtpPass')} />
-        </div>
-
-        <Input label="From address" placeholder="noreply@yourcompany.com" {...register('smtpFrom')} />
-
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Button type="submit" loading={mutation.isPending}>Save SMTP</Button>
-          <Button type="button" variant="secondary" onClick={() => testMutation.mutate()}
-            loading={testMutation.isPending}>
-            Send test email
-          </Button>
-          <div className="flex-1">
-            <SaveFeedback isSuccess={mutation.isSuccess} isError={mutation.isError} />
-            {testMutation.isSuccess && <p className="text-sm text-success">Test email sent — check your inbox.</p>}
-            {testMutation.isError   && <p className="text-sm text-danger">Test failed — check your SMTP credentials.</p>}
+          <div className="relative">
+            <Input label="Password" type={showPass ? 'text' : 'password'}
+              placeholder={data?.hasPassword ? 'Saved — leave blank to keep it' : '••••••••'}
+              {...register('smtpPass')} />
+            <button type="button" onClick={() => setShowPass(s => !s)}
+              className="absolute right-3 top-[34px] text-text-muted hover:text-text-secondary">
+              {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
         </div>
 
-        <div className="rounded-md bg-primary/5 border border-primary/20 p-3 text-xs text-text-secondary">
-          <p className="font-medium text-text-primary mb-1">Development mode</p>
-          <p>All emails are captured by Mailpit. Open <a href="http://localhost:8025" target="_blank"
-            className="text-primary underline">localhost:8025</a> to view them. No real emails are sent.</p>
+        {watch('smtpHost') === 'smtp.gmail.com' && (
+          <p className="text-xs text-text-secondary">
+            Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"
+              className="text-primary hover:underline">App Password</a> — your regular Gmail password won't work here (Google blocks plain SMTP logins).
+          </p>
+        )}
+
+        <Input label="From address" placeholder="noreply@yourcompany.com" {...register('smtpFrom')} />
+
+        <div className="flex flex-wrap items-end gap-3 pt-1">
+          <Button type="submit" loading={mutation.isPending} disabled={!isDirty}>Save SMTP</Button>
+          <div className="flex items-end gap-2">
+            <Input label="Send test to" type="email" placeholder="you@example.com" value={testEmail}
+              onChange={e => setTestEmail(e.target.value)} className="w-56" />
+            <Button type="button" variant="secondary" onClick={() => testMutation.mutate()}
+              loading={testMutation.isPending} disabled={!testEmail}>
+              Send test email
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <SaveFeedback isSuccess={mutation.isSuccess} isError={mutation.isError} />
+          {testMutation.isSuccess && (
+            testMutation.data?.data?.success
+              ? <p className="text-sm text-success">Test email sent — check {testEmail}.</p>
+              : <p className="text-sm text-danger">{testMutation.data?.data?.error ?? 'Test failed — check your SMTP credentials.'}</p>
+          )}
+          {testMutation.isError && <p className="text-sm text-danger">Request failed — check the API is reachable.</p>}
         </div>
       </form>
     </div>
@@ -706,7 +781,7 @@ function AboutTab() {
           C
         </div>
         <div>
-          <h2 className="text-xl font-bold text-text-primary">CRM Platform</h2>
+          <h2 className="text-xl font-bold text-text-primary">TrustLoop</h2>
           <p className="text-sm text-text-secondary">Enterprise Customer Relationship Management</p>
         </div>
         <div className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-text-secondary">

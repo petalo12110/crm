@@ -140,7 +140,7 @@ export class AdminService {
 
       await provider.send({
         to:      recipient,
-        subject: 'CRM Platform — SMTP test',
+        subject: 'TrustLoop — SMTP test',
         html:    renderTemplate('smtp-test', { emailFrom: cfg.emailFrom, host: cfg.host }),
       })
       return { success: true }

@@ -1,4 +1,4 @@
-# Enterprise CRM Platform
+# TrustLoop
 
 A full-stack, production-ready Customer Relationship Management system for growing businesses. Manage customers, leads, opportunities, tasks, support tickets, calendar events, employees, and analytics — all in one place.
 
