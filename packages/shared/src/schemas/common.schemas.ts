@@ -148,12 +148,14 @@ export const UpdateSmtpSettingsSchema = z.object({
   smtpHost: z.string().max(255).optional(),
   smtpPort: z.coerce.number().int().min(1).max(65535).optional(),
   smtpUser: z.string().max(255).optional(),
-  // Optional — omitting it means "keep the currently-saved value" (for
-  // both smtpPass and resendApiKey), matching the platform-level admin
-  // settings behavior. The frontend never receives the real secret back,
-  // so a blank field must not be treated as "erase it".
-  smtpPass: z.string().min(1).optional(),
-  resendApiKey: z.string().min(1).optional(),
+  // Optional — omitting it (or submitting it blank) means "keep the
+  // currently-saved value" (for both smtpPass and resendApiKey), matching
+  // the platform-level admin settings behavior. The frontend never
+  // receives the real secret back, and the form field for the *inactive*
+  // provider stays present-but-empty in its state even when hidden, so an
+  // empty string must be treated as "not provided", not as "erase it".
+  smtpPass: z.string().optional().transform(v => (v && v.trim() !== '') ? v : undefined),
+  resendApiKey: z.string().optional().transform(v => (v && v.trim() !== '') ? v : undefined),
   smtpFrom: z.string().email(),
 }).refine(
   dto => dto.emailProvider !== 'smtp' || (!!dto.smtpHost && !!dto.smtpPort && !!dto.smtpUser),
